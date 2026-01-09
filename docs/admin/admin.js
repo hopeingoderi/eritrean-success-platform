@@ -1,6 +1,6 @@
 // ================= CONFIG =================
 // Change this when deployed:
-const API_BASE = "http://localhost:4000/api";
+const API_BASE = "https://eritrean-success-backend.onrender.com/api";
 // Example Render: const API_BASE = "https://YOUR-SERVICE.onrender.com/api";
 
 const appEl = document.getElementById("app");
@@ -541,3 +541,4 @@ async function saveExam(){
   if(!location.hash) setHash("#/login");
   render();
 })();
+
