@@ -1,5 +1,5 @@
 // ================= CONFIG =================
-const API_BASE = "http://localhost:4000/api"; 
+const API_BASE = "https://eritrean-success-backend.onrender.com/api"; 
 // later change to: https://YOUR-SERVICE.onrender.com/api
 
 const app = document.getElementById("app");
@@ -158,3 +158,4 @@ async function save(courseId, lessonIndex) {
 
 // ================= START =================
 render();
+
