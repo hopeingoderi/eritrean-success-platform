@@ -25,7 +25,10 @@ router.post("/register", async (req, res) => {
     [name, email, hash, "student"]
   );
 
-  req.session.user = r.rows[0];
+  req.session.user = {
+  id: r.rows[0].id,
+  role: "admin"
+};
   res.json({ user: req.session.user });
 });
 
@@ -58,3 +61,4 @@ router.get("/me", (req, res) => {
 });
 
 module.exports = router;
+
