@@ -1,3 +1,5 @@
+const requireLogin = require("./middleware/requireLogin");
+const requireAdmin = require("./middleware/requireAdmin");
 process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT EXCEPTION:", err);
 });
@@ -80,4 +82,5 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
 });
+
 
