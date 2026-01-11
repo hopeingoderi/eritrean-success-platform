@@ -78,7 +78,6 @@ app.use("/api/exams", requireLogin, require("./routes/exams"));
 app.use("/api/certificates", requireLogin, require("./routes/certificates"));
 
 // ADMIN ONLY
-// ADMIN ONLY
 app.use("/api/admin", requireAdmin, require("./routes/admin_lessons"));
 app.use("/api/admin", requireAdmin, require("./routes/admin_exams"));
 
@@ -88,6 +87,7 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
 });
+
 
 
 
