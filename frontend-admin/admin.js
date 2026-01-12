@@ -8,11 +8,11 @@ document.getElementById("year").textContent = new Date().getFullYear();
 
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Course key -> numeric course id in DB
+// Use string course IDs everywhere
 const COURSE_ID_BY_KEY = {
-  foundation: 1,
-  growth: 2,
-  excellence: 3
+  foundation: "foundation",
+  growth: "growth",
+  excellence: "excellence"
 };
 
 // ================= HELPERS =================
@@ -557,4 +557,5 @@ async function saveExam() {
   if (!location.hash) setHash("#/login");
   render();
 })();
+
 
