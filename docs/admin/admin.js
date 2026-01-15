@@ -10,7 +10,6 @@ const logoutBtn = document.getElementById("logoutBtn");
 
 // Course key -> numeric course id in DB
 const COURSE_ID_BY_KEY = {
-const COURSE_ID_BY_KEY = {
   foundation: "foundation",
   growth: "growth",
   excellence: "excellence"
@@ -556,4 +555,5 @@ async function saveExam() {
   if (!location.hash) setHash("#/login");
   render();
 })();
+
 
