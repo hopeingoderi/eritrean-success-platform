@@ -48,24 +48,25 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Missing courseId or lessonIndex" });
     }
 
-    // ✅ SAFETY
+    // Always store valid JSON in quiz column
     const quizSafe =
-      quiz && typeof quiz === "object" ? quiz : { questions: [] };
+      quiz && typeof quiz === "object"
+        ? quiz
+        : { questions: [] };
 
     if (id) {
-      // UPDATE
       await query(
         `UPDATE lessons SET
-          course_id = $1,
-          lesson_index = $2,
-          title_en = $3,
-          title_ti = $4,
-          learn_en = $5,
-          learn_ti = $6,
-          task_en = $7,
-          task_ti = $8,
-          quiz = $9
-         WHERE id = $10`,
+          course_id=$1,
+          lesson_index=$2,
+          title_en=$3,
+          title_ti=$4,
+          learn_en=$5,
+          learn_ti=$6,
+          task_en=$7,
+          task_ti=$8,
+          quiz=$9
+         WHERE id=$10`,
         [
           courseId,
           lessonIndex,
@@ -80,11 +81,9 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
         ]
       );
     } else {
-      // INSERT
       await query(
         `INSERT INTO lessons
-         (course_id, lesson_index, title_en, title_ti,
-          learn_en, learn_ti, task_en, task_ti, quiz)
+         (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [
           courseId,
