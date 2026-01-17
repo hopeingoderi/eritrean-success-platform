@@ -575,12 +575,17 @@ async function saveExam() {
   }
 }
 // expose functions for inline onclick handlers
+// expose functions for inline onclick handlers (REQUIRED)
 window.renderLessonEditor = renderLessonEditor;
 window.renderLessonsList = renderLessonsList;
+window.editLesson = window.editLesson || editLesson;      // if you define editLesson as function
+window.deleteLesson = window.deleteLesson || deleteLesson; // if you define deleteLesson as function
+
 
 // ================= BOOT =================
 (function boot() {
   if (!location.hash) setHash("#/login");
   render();
 })();
+
 
