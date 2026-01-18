@@ -44,10 +44,7 @@ app.use(cors({
 const isProd = process.env.NODE_ENV === "production";
 
 app.use(cors({
-  origin: [
-    "https://riseeritrea.com",
-    "https://www.riseeritrea.com"
-  ],
+  origin: [ "https://riseeritrea.com", "https://www.riseeritrea.com"],
   credentials: true
 }));
 
@@ -88,6 +85,7 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
 });
+
 
 
 
