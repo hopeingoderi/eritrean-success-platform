@@ -1,6 +1,7 @@
 // ================= CONFIG =================
-const API_BASE = "https://eritrean-success-backend.onrender.com/api"; 
+const API_BASE = "https://api.riseeritrean.com/api"; 
 // later change to: https://YOUR-SERVICE.onrender.com/api
+// Change API_BASE everywhere → https://api.riseeritrea.com/api
 
 const app = document.getElementById("app");
 
@@ -158,4 +159,5 @@ async function save(courseId, lessonIndex) {
 
 // ================= START =================
 render();
+
 
