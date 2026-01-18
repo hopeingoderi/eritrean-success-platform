@@ -1,3 +1,6 @@
+process.on("uncaughtException", (err) => console.error("UNCAUGHT EXCEPTION:", err));
+process.on("unhandledRejection", (err) => console.error("UNHANDLED REJECTION:", err));
+
 require("dotenv").config();
 
 const express = require("express");
@@ -9,67 +12,55 @@ const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 
 const { pool } = require("./db_pg");
+
 const requireLogin = require("./middleware/requireLogin");
 const requireAdmin = require("./middleware/requireAdmin");
 
 const app = express();
-
-/* ================= CORE ================= */
 app.set("trust proxy", 1);
+
 app.use(helmet());
-app.use(rateLimit({ windowMs: 60_000, max: 200 }));
+app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
-/* ================= CORS (ONE ONLY) ================= */
+// ✅ CORS (ONLY ONCE)
 app.use(cors({
-  origin: [
-    "https://riseeritrea.com",
-    "https://www.riseeritrea.com"
-  ],
+  origin: ["https://riseeritrea.com", "https://www.riseeritrea.com"],
   credentials: true
 }));
 
-/* ================= SESSION ================= */
+// ✅ SESSION (cross-subdomain cookie)
 app.use(session({
-  name: "sid",
-  store: new pgSession({
-    pool,
-    tableName: "session"
-  }),
+  name: "esj.sid",
+  store: new pgSession({ pool, tableName: "session" }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   proxy: true,
   cookie: {
     httpOnly: true,
-    secure: true,     // HTTPS REQUIRED
-    sameSite: "none", // cross-domain cookie
+    secure: true,                 // REQUIRED (https)
+    sameSite: "none",             // REQUIRED for cross-site cookies
+    domain: ".riseeritrea.com",   // share cookie across subdomains
     maxAge: 1000 * 60 * 60 * 24 * 14
   }
 }));
 
-/* ================= HEALTH ================= */
-app.get("/api/health", (req, res) => {
-  res.json({ ok: true });
-});
+app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-/* ================= ROUTES ================= */
+// PUBLIC
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/courses", require("./routes/courses"));
 app.use("/api/lessons", require("./routes/lessons"));
 
+// STUDENT (logged-in)
 app.use("/api/progress", requireLogin, require("./routes/progress"));
 app.use("/api/exams", requireLogin, require("./routes/exams"));
 app.use("/api/certificates", requireLogin, require("./routes/certificates"));
 
-app.use("/api/admin", requireAdmin, require("./routes/admin_lessons"));
-app.use("/api/admin", requireAdmin, require("./routes/admin_exams"));
+// ADMIN
+app.use("/api/admin", requireAdmin, require("./routes/admin"));
 
-/* ================= START ================= */
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log("API running on port", PORT);
-});
-
-
+app.listen(PORT, () => console.log("API running on port", PORT));
