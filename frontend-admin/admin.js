@@ -10,7 +10,7 @@
 
 // ================= CONFIG =================
 // PRODUCTION (Render backend)
-const API_BASE = "https://eritrean-success-backend.onrender.com/api";
+const API_BASE = "https://riseeritrea.com/api";
 
 const appEl = document.getElementById("app");
 document.getElementById("year").textContent = new Date().getFullYear();
@@ -583,4 +583,5 @@ window.renderLessonsList = renderLessonsList;
   if (!location.hash) setHash("#/login");
   render();
 })();
+
 
