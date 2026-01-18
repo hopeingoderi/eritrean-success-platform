@@ -1,5 +1,5 @@
 // ================= CONFIG =================
-const API_BASE = "https://api.riseeritrean.com/api"; 
+const API_BASE = "https://api.riseeritrea.com/api"; 
 // later change to: https://YOUR-SERVICE.onrender.com/api
 // Change API_BASE everywhere → https://api.riseeritrea.com/api
 
@@ -159,5 +159,6 @@ async function save(courseId, lessonIndex) {
 
 // ================= START =================
 render();
+
 
 
