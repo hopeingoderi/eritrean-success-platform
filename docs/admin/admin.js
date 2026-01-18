@@ -1,18 +1,23 @@
+// Admin Panel (Frontend) — STRING course IDs + stable globals
 const API_BASE = "https://api.riseeritrea.com/api";
 
 const appEl = document.getElementById("app");
-const yearEl = document.getElementById("year");
-if (yearEl) yearEl.textContent = new Date().getFullYear();
+document.getElementById("year").textContent = new Date().getFullYear();
+const logoutBtn = document.getElementById("logoutBtn");
 
-const navLogin = document.getElementById("navLogin");
-const navRegister = document.getElementById("navRegister");
-const navLogout = document.getElementById("navLogout");
-
-const COURSE_ORDER = ["foundation", "growth", "excellence"];
+const COURSE_ID_BY_KEY = {
+  foundation: "foundation",
+  growth: "growth",
+  excellence: "excellence"
+};
 
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
   }[m]));
 }
 
@@ -29,116 +34,77 @@ async function api(path, { method = "GET", body } = {}) {
 }
 
 function setHash(h) { location.hash = h; }
-function parts() { return (location.hash || "#/").replace("#/", "").split("/"); }
+function normalizeQuiz(quiz) {
+  if (quiz && typeof quiz === "object") return { questions: Array.isArray(quiz.questions) ? quiz.questions : [] };
+  return { questions: [] };
+}
 
 let state = {
   user: null,
-  courses: [],
-  lessons: {},          // { [courseId]: lessons[] }
-  progress: {},         // { [courseId]: byLessonIndex{} }
+  selectedCourse: "foundation",
+  lessons: [],
+  editingLessonId: null
 };
 
-function updateNav() {
-  const loggedIn = !!state.user;
-  if (navLogin) navLogin.style.display = loggedIn ? "none" : "inline-block";
-  if (navRegister) navRegister.style.display = loggedIn ? "none" : "inline-block";
-  if (navLogout) navLogout.style.display = loggedIn ? "inline-block" : "none";
-}
+logoutBtn.addEventListener("click", async () => {
+  try { await api("/auth/logout", { method: "POST" }); } catch {}
+  state.user = null;
+  setHash("#/login");
+  render();
+});
 
 async function loadMe() {
   const r = await api("/auth/me");
   state.user = r.user;
-  updateNav();
-}
-
-if (navLogout) {
-  navLogout.addEventListener("click", async () => {
-    try { await api("/auth/logout", { method: "POST" }); } catch {}
-    state.user = null;
-    updateNav();
-    setHash("#/login");
-    render();
-  });
-}
-
-async function loadCourses() {
-  const r = await api("/courses");
-  // expected: { courses:[{id,name}] } but we’ll normalize
-  const courses = r.courses || r || [];
-  state.courses = courses
-    .map(c => ({ id: c.id, name: c.name || c.id }))
-    .sort((a, b) => COURSE_ORDER.indexOf(a.id) - COURSE_ORDER.indexOf(b.id));
-}
-
-async function loadLessons(courseId) {
-  const rEn = await api(`/lessons/${courseId}?lang=en`);
-  const lessons = rEn.lessons || [];
-  state.lessons[courseId] = lessons.sort((a, b) => a.lessonIndex - b.lessonIndex);
-}
-
-async function loadProgress(courseId) {
-  const r = await api(`/progress/course/${courseId}`);
-  state.progress[courseId] = r.byLessonIndex || {};
-}
-
-function progressPercent(courseId) {
-  const lessons = state.lessons[courseId] || [];
-  const prog = state.progress[courseId] || {};
-  if (!lessons.length) return 0;
-  let done = 0;
-  for (const l of lessons) if (prog[l.lessonIndex]?.completed) done++;
-  return Math.round((done / lessons.length) * 100);
-}
-
-function renderProgressBar(pct) {
-  return `
-    <div style="margin:10px 0;">
-      <div class="small">Progress: <b>${pct}%</b></div>
-      <div style="height:10px;border-radius:999px;background:rgba(255,255,255,0.15);overflow:hidden;">
-        <div style="height:10px;width:${pct}%;background:rgba(255,255,255,0.65);"></div>
-      </div>
-    </div>
-  `;
+  logoutBtn.style.display = state.user ? "inline-flex" : "none";
 }
 
 window.addEventListener("hashchange", render);
+function routeParts() { return (location.hash || "#/").replace("#/", "").split("/"); }
 
 async function render() {
-  try { await loadMe(); } catch { state.user = null; updateNav(); }
+  try { await loadMe(); } catch { state.user = null; }
 
-  const [page, p1, p2] = parts();
+  const [page] = routeParts();
 
   if (!state.user) {
-    if (page !== "register") {
+    setHash("#/login");
+    return renderLogin();
+  }
+  if (state.user.role !== "admin") {
+    appEl.innerHTML = `
+      <div class="card">
+        <div class="h1">Admin only</div>
+        <p class="p">Please login with an admin account.</p>
+        <button class="btn danger" id="logoutNow">Logout</button>
+      </div>`;
+    document.getElementById("logoutNow").onclick = async () => {
+      await api("/auth/logout", { method: "POST" });
+      state.user = null;
       setHash("#/login");
-      return renderLogin();
-    }
-    return renderRegister();
+      render();
+    };
+    return;
   }
 
-  if (!page || page === "courses") return renderCourses();
-  if (page === "lesson") return renderLesson(p1, Number(p2));
-
-  setHash("#/courses");
-  return renderCourses();
+  if (!page || page === "dashboard") return renderDashboard();
+  if (page === "lessons") return renderLessons();
+  if (page === "exams") return renderExams();
+  return renderDashboard();
 }
-
-// -------------------- AUTH PAGES --------------------
 
 function renderLogin() {
   appEl.innerHTML = `
     <div class="card">
-      <div class="h1">Login</div>
+      <div class="h1">Admin Login</div>
       <label>Email</label>
-      <input id="email" type="email" />
+      <input id="email" type="email" placeholder="admin@example.com" />
       <label>Password</label>
-      <input id="password" type="password" />
-      <div style="height:10px"></div>
+      <input id="password" type="password" placeholder="••••••••" />
+      <div style="height:12px"></div>
       <button class="btn primary" id="loginBtn">Login</button>
       <div class="small" id="msg" style="margin-top:10px"></div>
-    </div>
-  `;
-
+    </div>`;
   document.getElementById("loginBtn").onclick = async () => {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
@@ -147,8 +113,7 @@ function renderLogin() {
     try {
       const r = await api("/auth/login", { method: "POST", body: { email, password } });
       state.user = r.user;
-      updateNav();
-      setHash("#/courses");
+      setHash("#/dashboard");
       render();
     } catch (e) {
       msg.textContent = "Login failed: " + e.message;
@@ -156,182 +121,327 @@ function renderLogin() {
   };
 }
 
-function renderRegister() {
+function renderDashboard() {
   appEl.innerHTML = `
     <div class="card">
-      <div class="h1">Register</div>
-      <label>Name</label>
-      <input id="name" type="text" />
-      <label>Email</label>
-      <input id="email" type="email" />
-      <label>Password</label>
-      <input id="password" type="password" />
-      <div style="height:10px"></div>
-      <button class="btn primary" id="regBtn">Create account</button>
-      <div class="small" id="msg" style="margin-top:10px"></div>
-    </div>
-  `;
-
-  document.getElementById("regBtn").onclick = async () => {
-    const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value.trim();
-    const msg = document.getElementById("msg");
-    msg.textContent = "";
-    try {
-      const r = await api("/auth/register", { method: "POST", body: { name, email, password } });
-      state.user = r.user;
-      updateNav();
-      setHash("#/courses");
-      render();
-    } catch (e) {
-      msg.textContent = "Register failed: " + e.message;
-    }
-  };
-}
-
-// -------------------- COURSES --------------------
-
-async function renderCourses() {
-  appEl.innerHTML = `<div class="card"><div class="h1">Loading...</div></div>`;
-
-  await loadCourses();
-
-  // preload lessons+progress
-  for (const c of state.courses) {
-    await loadLessons(c.id);
-    await loadProgress(c.id);
-  }
-
-  const cards = state.courses.map(c => {
-    const pct = progressPercent(c.id);
-    const lessons = state.lessons[c.id] || [];
-    const nextLesson = findNextLessonIndex(c.id);
-    return `
-      <div class="card">
-        <div class="h2">${escapeHtml(c.name)}</div>
-        ${renderProgressBar(pct)}
-        <div class="small">${lessons.length} lessons</div>
-        <div style="height:10px"></div>
-        <button class="btn primary" onclick="location.hash='#/lesson/${c.id}/${nextLesson}'">
-          Continue
-        </button>
+      <div class="row">
+        <div>
+          <div class="h1">Dashboard</div>
+          <div class="small">Logged in as <b>${escapeHtml(state.user.name)}</b></div>
+        </div>
+        <div class="row" style="justify-content:flex-end;">
+          <button class="btn primary" onclick="location.hash='#/lessons'">Manage Lessons</button>
+          <button class="btn ok" onclick="location.hash='#/exams'">Manage Final Exams</button>
+        </div>
       </div>
-    `;
-  }).join("");
+    </div>`;
+}
 
+async function renderLessons() {
   appEl.innerHTML = `
     <div class="card">
-      <div class="h1">Lessons</div>
-      <div class="small">Choose a level and continue learning.</div>
+      <div class="row">
+        <div>
+          <div class="h1">Manage Lessons</div>
+          <div class="small">Create / edit / delete lessons.</div>
+        </div>
+        <div class="row" style="justify-content:flex-end;">
+          <button class="btn" onclick="location.hash='#/dashboard'">Back</button>
+        </div>
+      </div>
+
+      <label>Course</label>
+      <select id="courseSelect">
+        <option value="foundation">foundation</option>
+        <option value="growth">growth</option>
+        <option value="excellence">excellence</option>
+      </select>
+
+      <div style="height:10px"></div>
+      <button class="btn primary" id="loadLessonsBtn">Load lessons</button>
+      <span class="small" id="lessonsMsg"></span>
     </div>
+
     <div class="grid two">
-      ${cards}
+      <div class="card" id="lessonsListCard"></div>
+      <div class="card" id="lessonEditorCard"></div>
+    </div>`;
+
+  const courseSelect = document.getElementById("courseSelect");
+  courseSelect.value = state.selectedCourse;
+
+  document.getElementById("loadLessonsBtn").onclick = async () => {
+    state.selectedCourse = courseSelect.value;
+    await loadLessonsList();
+    renderLessonsList();
+    renderLessonEditor(null);
+  };
+
+  await loadLessonsList();
+  renderLessonsList();
+  renderLessonEditor(null);
+}
+
+async function loadLessonsList() {
+  const msg = document.getElementById("lessonsMsg");
+  msg.textContent = " Loading...";
+  try {
+    const courseId = COURSE_ID_BY_KEY[state.selectedCourse];
+    const r = await api(`/admin/lessons/${courseId}`);
+    state.lessons = r.lessons || [];
+    msg.textContent = ` Loaded ✅ (${state.lessons.length})`;
+  } catch (e) {
+    msg.textContent = " Load failed: " + e.message;
+  }
+}
+
+function renderLessonsList() {
+  const el = document.getElementById("lessonsListCard");
+  const rows = state.lessons
+    .sort((a, b) => a.lesson_index - b.lesson_index)
+    .map(l => `
+      <tr>
+        <td>${l.lesson_index}</td>
+        <td>
+          <div><b>${escapeHtml(l.title_en || "")}</b></div>
+          <div class="small">${escapeHtml(l.title_ti || "")}</div>
+        </td>
+        <td style="white-space:nowrap;">
+          <button class="btn" onclick="editLesson(${l.id})">Edit</button>
+          <button class="btn danger" onclick="deleteLesson(${l.id})">Delete</button>
+        </td>
+      </tr>`).join("");
+
+  el.innerHTML = `
+    <div class="row">
+      <div class="h2">Lessons list</div>
+      <button class="btn ok" onclick="renderLessonEditor(null)">+ New lesson</button>
+    </div>
+    <div class="small">Course: <b>${escapeHtml(state.selectedCourse)}</b></div>
+    <div style="height:10px"></div>
+    <table class="table">
+      <thead><tr><th style="width:70px">Index</th><th>Title</th><th style="width:210px">Actions</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="3" class="small">No lessons yet.</td></tr>`}</tbody>
+    </table>`;
+}
+
+window.editLesson = (id) => {
+  const lesson = state.lessons.find(x => x.id === id);
+  renderLessonEditor(lesson || null);
+};
+
+window.deleteLesson = async (id) => {
+  if (!confirm("Delete this lesson?")) return;
+  try {
+    await api(`/admin/lesson/${id}`, { method: "DELETE" });
+    await loadLessonsList();
+    renderLessonsList();
+    renderLessonEditor(null);
+    alert("Deleted ✅");
+  } catch (e) {
+    alert("Delete failed: " + e.message);
+  }
+};
+
+function renderLessonEditor(lesson) {
+  const el = document.getElementById("lessonEditorCard");
+  const isEdit = !!lesson;
+  state.editingLessonId = isEdit ? lesson.id : null;
+
+  const courseKey = state.selectedCourse;
+  const lessonIndex = isEdit ? lesson.lesson_index : 0;
+
+  el.innerHTML = `
+    <div class="row">
+      <div class="h2">${isEdit ? "Edit lesson" : "Create lesson"}</div>
+      <span class="badge">${isEdit ? `ID: ${lesson.id}` : "New"}</span>
+    </div>
+
+    <label>Course</label>
+    <select id="editCourseKey">
+      <option value="foundation">foundation</option>
+      <option value="growth">growth</option>
+      <option value="excellence">excellence</option>
+    </select>
+
+    <label>Lesson index (0..9)</label>
+    <input id="editLessonIndex" type="number" value="${lessonIndex}" />
+
+    <hr/>
+
+    <label>Title (English)</label>
+    <input id="title_en" type="text" value="${isEdit ? escapeHtml(lesson.title_en || "") : ""}" />
+
+    <label>Title (Tigrinya)</label>
+    <input id="title_ti" type="text" value="${isEdit ? escapeHtml(lesson.title_ti || "") : ""}" />
+
+    <label>Learn text (English)</label>
+    <textarea id="learn_en"></textarea>
+
+    <label>Learn text (Tigrinya)</label>
+    <textarea id="learn_ti"></textarea>
+
+    <label>Task (English)</label>
+    <input id="task_en" type="text" />
+
+    <label>Task (Tigrinya)</label>
+    <input id="task_ti" type="text" />
+
+    <label>Quiz JSON</label>
+    <textarea id="quiz_json" class="codeHint"></textarea>
+
+    <div style="height:10px"></div>
+    <button class="btn ok" id="saveLessonBtn">${isEdit ? "Save changes" : "Create lesson"}</button>
+    <div class="small" id="saveLessonMsg" style="margin-top:10px"></div>
+  `;
+
+  document.getElementById("editCourseKey").value = courseKey;
+
+  if (isEdit) {
+    // no hydrate via /lessons needed; editor is full form; keep simple
+    document.getElementById("learn_en").value = "";
+    document.getElementById("learn_ti").value = "";
+    document.getElementById("task_en").value = "";
+    document.getElementById("task_ti").value = "";
+    document.getElementById("quiz_json").value = JSON.stringify({ questions: [] }, null, 2);
+  } else {
+    document.getElementById("learn_en").value = "";
+    document.getElementById("learn_ti").value = "";
+    document.getElementById("task_en").value = "";
+    document.getElementById("task_ti").value = "";
+    document.getElementById("quiz_json").value = JSON.stringify({
+      questions: [{ text: "Question 1", options: ["Option A", "Option B"], correctIndex: 0 }]
+    }, null, 2);
+  }
+
+  document.getElementById("saveLessonBtn").onclick = saveLesson;
+}
+
+async function saveLesson() {
+  const msg = document.getElementById("saveLessonMsg");
+  msg.textContent = "";
+
+  const id = state.editingLessonId;
+  const courseKey = document.getElementById("editCourseKey").value;
+  const courseId = COURSE_ID_BY_KEY[courseKey];
+
+  const lessonIndex = Number(document.getElementById("editLessonIndex").value);
+  const payload = {
+    ...(id ? { id } : {}),
+    courseId,
+    lessonIndex,
+    title_en: document.getElementById("title_en").value.trim(),
+    title_ti: document.getElementById("title_ti").value.trim(),
+    learn_en: document.getElementById("learn_en").value.trim(),
+    learn_ti: document.getElementById("learn_ti").value.trim(),
+    task_en: document.getElementById("task_en").value.trim(),
+    task_ti: document.getElementById("task_ti").value.trim(),
+    quiz: normalizeQuiz(JSON.parse(document.getElementById("quiz_json").value || "{}"))
+  };
+
+  try {
+    await api("/admin/lesson/save", { method: "POST", body: payload });
+    msg.textContent = "Saved ✅";
+    state.selectedCourse = courseKey;
+    await loadLessonsList();
+    renderLessonsList();
+  } catch (e) {
+    msg.textContent = "Save failed: " + e.message;
+  }
+}
+
+async function renderExams() {
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <div><div class="h1">Manage Final Exams</div></div>
+        <div class="row" style="justify-content:flex-end;">
+          <button class="btn" onclick="location.hash='#/dashboard'">Back</button>
+        </div>
+      </div>
+
+      <label>Course</label>
+      <select id="examCourseSelect">
+        <option value="foundation">foundation</option>
+        <option value="growth">growth</option>
+        <option value="excellence">excellence</option>
+      </select>
+
+      <label>Pass score (0–100)</label>
+      <input id="passScore" type="number" value="70" />
+
+      <hr/>
+
+      <label>Exam JSON (English)</label>
+      <textarea id="examJsonEn" class="codeHint"></textarea>
+
+      <label>Exam JSON (Tigrinya)</label>
+      <textarea id="examJsonTi" class="codeHint"></textarea>
+
+      <div style="height:10px"></div>
+      <div class="row">
+        <button class="btn primary" id="loadExamBtn">Load</button>
+        <button class="btn ok" id="saveExamBtn">Save</button>
+      </div>
+
+      <div class="small" id="examMsg" style="margin-top:10px"></div>
     </div>
   `;
+
+  document.getElementById("examCourseSelect").value = state.selectedCourse;
+  document.getElementById("loadExamBtn").onclick = loadExam;
+  document.getElementById("saveExamBtn").onclick = saveExam;
+
+  await loadExam();
 }
 
-function findNextLessonIndex(courseId) {
-  const lessons = state.lessons[courseId] || [];
-  const prog = state.progress[courseId] || {};
-  for (const l of lessons) {
-    if (!prog[l.lessonIndex]?.completed) return l.lessonIndex;
+async function loadExam() {
+  const courseKey = document.getElementById("examCourseSelect").value;
+  const courseId = COURSE_ID_BY_KEY[courseKey];
+  const msg = document.getElementById("examMsg");
+  msg.textContent = "Loading...";
+
+  try {
+    const r = await api(`/admin/exam/${courseId}`);
+    document.getElementById("passScore").value = r.passScore ?? 70;
+    document.getElementById("examJsonEn").value = JSON.stringify(r.exam_en || { questions: [] }, null, 2);
+    document.getElementById("examJsonTi").value = JSON.stringify(r.exam_ti || { questions: [] }, null, 2);
+    msg.textContent = "Loaded ✅";
+    state.selectedCourse = courseKey;
+  } catch (e) {
+    msg.textContent = "Load failed: " + e.message;
   }
-  return lessons.length ? lessons[lessons.length - 1].lessonIndex : 0;
 }
 
-// -------------------- LESSON PAGE (Back/Next + Save) --------------------
+async function saveExam() {
+  const courseKey = document.getElementById("examCourseSelect").value;
+  const courseId = COURSE_ID_BY_KEY[courseKey];
+  const msg = document.getElementById("examMsg");
+  msg.textContent = "";
 
-async function renderLesson(courseId, lessonIndex) {
-  if (!courseId) return setHash("#/courses");
+  const passScore = Number(document.getElementById("passScore").value);
 
-  if (!state.lessons[courseId]) await loadLessons(courseId);
-  if (!state.progress[courseId]) await loadProgress(courseId);
-
-  const lessons = state.lessons[courseId] || [];
-  const prog = state.progress[courseId] || {};
-
-  const lesson = lessons.find(x => x.lessonIndex === lessonIndex);
-  if (!lesson) {
-    setHash("#/courses");
+  let exam_en, exam_ti;
+  try {
+    exam_en = JSON.parse(document.getElementById("examJsonEn").value || "{}");
+    exam_ti = JSON.parse(document.getElementById("examJsonTi").value || "{}");
+  } catch {
+    msg.textContent = "Invalid JSON.";
     return;
   }
 
-  const pct = progressPercent(courseId);
-
-  const prevIndex = lessonIndex > 0 ? lessonIndex - 1 : null;
-  const nextIndex = lessonIndex < lessons.length - 1 ? lessonIndex + 1 : null;
-
-  const existingReflection = prog[lessonIndex]?.reflectionText || "";
-
-  appEl.innerHTML = `
-    <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;">
-        <div>
-          <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
-          <div class="h1">${escapeHtml(lesson.title)}</div>
-        </div>
-        <button class="btn" onclick="location.hash='#/courses'">Back to levels</button>
-      </div>
-
-      ${renderProgressBar(pct)}
-
-      <div class="p">${escapeHtml(lesson.learnText || "")}</div>
-
-      <div style="height:10px"></div>
-      <div class="h2">Task</div>
-      <div class="p">${escapeHtml(lesson.task || "")}</div>
-
-      <div style="height:10px"></div>
-      <div class="h2">Reflection</div>
-      <textarea id="reflection" style="width:100%;min-height:120px;">${escapeHtml(existingReflection)}</textarea>
-
-      <div style="height:12px"></div>
-
-      <div class="row" style="gap:10px;justify-content:space-between;">
-        <button class="btn" id="prevBtn" ${prevIndex === null ? "disabled" : ""}>⬅ Previous</button>
-        <button class="btn ok" id="saveBtn">Save & Complete ✅</button>
-        <button class="btn" id="nextBtn" ${nextIndex === null ? "disabled" : ""}>Next ➡</button>
-      </div>
-
-      <div class="small" id="msg" style="margin-top:10px"></div>
-    </div>
-  `;
-
-  const msg = document.getElementById("msg");
-
-  document.getElementById("prevBtn").onclick = () => {
-    if (prevIndex !== null) setHash(`#/lesson/${courseId}/${prevIndex}`);
-  };
-
-  document.getElementById("nextBtn").onclick = () => {
-    if (nextIndex !== null) setHash(`#/lesson/${courseId}/${nextIndex}`);
-  };
-
-  document.getElementById("saveBtn").onclick = async () => {
-    msg.textContent = "Saving...";
-    const reflection = document.getElementById("reflection").value;
-
-    try {
-      await api("/progress/update", {
-        method: "POST",
-        body: { courseId, lessonIndex, completed: true, reflection }
-      });
-
-      await loadProgress(courseId);
-      msg.textContent = "Saved ✅";
-
-      // auto go next if exists
-      if (nextIndex !== null) setHash(`#/lesson/${courseId}/${nextIndex}`);
-    } catch (e) {
-      msg.textContent = "Save failed: " + e.message;
-    }
-  };
+  try {
+    await api("/admin/exam/save", { method: "POST", body: { courseId, passScore, exam_en, exam_ti } });
+    msg.textContent = "Saved ✅";
+  } catch (e) {
+    msg.textContent = "Save failed: " + e.message;
+  }
 }
 
-// boot
+// ✅ Needed for inline onclick in HTML
+window.renderLessonEditor = renderLessonEditor;
+
 (function boot() {
-  updateNav();
   if (!location.hash) setHash("#/login");
   render();
 })();
