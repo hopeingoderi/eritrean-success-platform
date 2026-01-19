@@ -1,109 +1,124 @@
 const express = require("express");
+const { z } = require("zod");
 const { query } = require("../db_pg");
-const requireAdmin = require("../middleware/requireAdmin");
 
 const router = express.Router();
 
 /**
- * GET /api/admin/lessons/:courseId
+ * GET lessons for a course (ADMIN)
+ * /api/admin/lessons/:courseId
  */
-router.get("/lessons/:courseId", requireAdmin, async (req, res) => {
-  try {
-    const { courseId } = req.params;
+router.get("/lessons/:courseId", async (req, res) => {
+  const { courseId } = req.params;
 
-    const r = await query(
-      `SELECT id, course_id, lesson_index, title_en, title_ti
-       FROM lessons
-       WHERE course_id = $1
-       ORDER BY lesson_index`,
-      [courseId]
-    );
+  const r = await query(
+    `SELECT id, course_id, lesson_index, title_en, title_ti
+     FROM lessons
+     WHERE course_id = $1
+     ORDER BY lesson_index`,
+    [courseId]
+  );
 
-    res.json({ lessons: r.rows });
-  } catch (err) {
-    console.error("ADMIN LESSONS LIST ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+  res.json({ lessons: r.rows });
 });
 
 /**
+ * CREATE or UPDATE lesson
  * POST /api/admin/lesson/save
  */
-router.post("/lesson/save", requireAdmin, async (req, res) => {
-  try {
-    const {
-      id,
-      courseId,
-      lessonIndex,
-      title_en,
-      title_ti,
-      learn_en,
-      learn_ti,
-      task_en,
-      task_ti,
-      quiz
-    } = req.body;
+router.post("/lesson/save", async (req, res) => {
+  const schema = z.object({
+    id: z.number().optional(),
+    courseId: z.string(),
+    lessonIndex: z.number().int().min(0),
+    title_en: z.string().optional(),
+    title_ti: z.string().optional(),
+    learn_en: z.string().optional(),
+    learn_ti: z.string().optional(),
+    task_en: z.string().optional(),
+    task_ti: z.string().optional(),
+    quiz: z.any().optional()
+  });
 
-    if (!courseId || lessonIndex === undefined) {
-      return res.status(400).json({ error: "Missing courseId or lessonIndex" });
-    }
-
-    // Always store valid JSON in quiz column
-    const quizSafe =
-      quiz && typeof quiz === "object"
-        ? quiz
-        : { questions: [] };
-
-    if (id) {
-      await query(
-        `UPDATE lessons SET
-          course_id=$1,
-          lesson_index=$2,
-          title_en=$3,
-          title_ti=$4,
-          learn_en=$5,
-          learn_ti=$6,
-          task_en=$7,
-          task_ti=$8,
-          quiz=$9
-         WHERE id=$10`,
-        [
-          courseId,
-          lessonIndex,
-          title_en,
-          title_ti,
-          learn_en,
-          learn_ti,
-          task_en,
-          task_ti,
-          quizSafe,
-          id
-        ]
-      );
-    } else {
-      await query(
-        `INSERT INTO lessons
-         (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          courseId,
-          lessonIndex,
-          title_en,
-          title_ti,
-          learn_en,
-          learn_ti,
-          task_en,
-          task_ti,
-          quizSafe
-        ]
-      );
-    }
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("ADMIN LESSON SAVE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid input" });
   }
+
+  const {
+    id,
+    courseId,
+    lessonIndex,
+    title_en,
+    title_ti,
+    learn_en,
+    learn_ti,
+    task_en,
+    task_ti,
+    quiz
+  } = parsed.data;
+
+  if (id) {
+    // UPDATE
+    await query(
+      `UPDATE lessons SET
+        course_id=$1,
+        lesson_index=$2,
+        title_en=$3,
+        title_ti=$4,
+        learn_en=$5,
+        learn_ti=$6,
+        task_en=$7,
+        task_ti=$8,
+        quiz=$9,
+        updated_at=NOW()
+       WHERE id=$10`,
+      [
+        courseId,
+        lessonIndex,
+        title_en,
+        title_ti,
+        learn_en,
+        learn_ti,
+        task_en,
+        task_ti,
+        quiz || { questions: [] },
+        id
+      ]
+    );
+  } else {
+    // INSERT
+    await query(
+      `INSERT INTO lessons
+       (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        courseId,
+        lessonIndex,
+        title_en,
+        title_ti,
+        learn_en,
+        learn_ti,
+        task_en,
+        task_ti,
+        quiz || { questions: [] }
+      ]
+    );
+  }
+
+  res.json({ ok: true });
+});
+
+/**
+ * DELETE lesson
+ * DELETE /api/admin/lesson/:id
+ */
+router.delete("/lesson/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid ID" });
+
+  await query("DELETE FROM lessons WHERE id=$1", [id]);
+  res.json({ ok: true });
 });
 
 module.exports = router;
