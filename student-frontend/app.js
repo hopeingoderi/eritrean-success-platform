@@ -1,31 +1,41 @@
 // student-frontend/app.js
 // ============================================================
-// Student Frontend SPA
-// - Sorted courses (foundation -> growth -> excellence)
-// - Proper auth button visibility (login/register hidden after login)
-// - Lesson navigation: Back / Next / Save & Complete / Return
-// - Progress bar (dashboard + per-course)
-// - Uses cookie session (credentials: "include")
+// Student Frontend (SPA)
+// Fixes:
+// - Correct API_BASE
+// - Courses not "undefined" (maps title_en/title_ti + description_en/description_ti)
+// - Sort courses by order: foundation -> growth -> excellence
+// - Proper Login/Register/Logout visibility
+// - Lesson page: Back/Next/Return + Save & Complete
+// - Progress bar from /progress/course/:courseId
 // ============================================================
 
-const API_BASE = "https://api.riseeritrea.com/api"; // ✅ IMPORTANT: no double https
+// ================= CONFIG =================
+const API_BASE = "https://api.riseeritrea.com/api"; // ✅ correct
 
+// ================= DOM =================
 const appEl = document.getElementById("app");
 const yearEl = document.getElementById("year");
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
+// header buttons (must exist in your index.html)
 const btnLogin = document.getElementById("btnLogin");
 const btnRegister = document.getElementById("btnRegister");
 const btnLogout = document.getElementById("btnLogout");
 
-// ---------- helpers ----------
+// ================= STATE =================
+const state = {
+  user: null,
+  lang: "en", // "en" | "ti"
+  courses: [],
+  lessonsByCourse: {},       // courseId -> lessons[]
+  progressByCourse: {},      // courseId -> { byLessonIndex: {...} }
+};
+
+// ================= HELPERS =================
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[m]));
 }
 
@@ -36,6 +46,7 @@ async function api(path, { method = "GET", body } = {}) {
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined
   });
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = typeof data.error === "string" ? data.error : "Request failed";
@@ -44,135 +55,133 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
-function setHash(h) { location.hash = h; }
-function getHashParts() {
+function setHash(h) {
+  if (location.hash !== h) location.hash = h;
+}
+
+function routeParts() {
   return (location.hash || "#/dashboard").replace("#/", "").split("/");
 }
 
-function normalizeQuiz(quiz) {
-  if (quiz && typeof quiz === "object" && Array.isArray(quiz.questions)) return quiz;
-  return { questions: [] };
+function courseTitle(c) {
+  return state.lang === "ti" ? (c.title_ti || c.title_en || "") : (c.title_en || c.title_ti || "");
 }
 
-// ---------- course order ----------
-const COURSE_ORDER = ["foundation", "growth", "excellence"];
-function courseSort(a, b) {
-  return COURSE_ORDER.indexOf(a.id) - COURSE_ORDER.indexOf(b.id);
+function courseDesc(c) {
+  return state.lang === "ti"
+    ? (c.description_ti || c.description_en || "")
+    : (c.description_en || c.description_ti || "");
 }
 
-// ---------- state ----------
-const state = {
-  user: null,
-  lang: "en", // "en" | "ti"
-  courses: [],
-  statusByCourse: {}, // from /progress/status
-  lessonsByCourse: {}, // courseId -> lessons[]
-  progressByCourse: {}, // courseId -> byLessonIndex
-};
+function lessonTitle(lesson) {
+  // lessons endpoint already returns { title, learnText, task, quiz }
+  return lesson?.title || "";
+}
 
-// ---------- auth button logic ----------
+function progressFor(courseId, lessonIndex) {
+  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
+  return p || { completed: false, reflectionText: "" };
+}
+
+function isLoggedIn() {
+  return !!state.user;
+}
+
+// ================= AUTH UI LOGIC =================
 function updateAuthButtons() {
-  const loggedIn = !!state.user;
-  if (btnLogin) btnLogin.style.display = loggedIn ? "none" : "inline-block";
-  if (btnRegister) btnRegister.style.display = loggedIn ? "none" : "inline-block";
-  if (btnLogout) btnLogout.style.display = loggedIn ? "inline-block" : "none";
+  if (!btnLogin || !btnRegister || !btnLogout) return;
+
+  if (state.user) {
+    btnLogin.style.display = "none";
+    btnRegister.style.display = "none";
+    btnLogout.style.display = "inline-block";
+  } else {
+    btnLogin.style.display = "inline-block";
+    btnRegister.style.display = "inline-block";
+    btnLogout.style.display = "none";
+  }
 }
 
 async function loadMe() {
+  // /auth/me returns { user: null } or { user: {...} }
   const r = await api("/auth/me");
   state.user = r.user;
   updateAuthButtons();
 }
 
-// ---------- boot nav buttons ----------
-if (btnLogin) btnLogin.addEventListener("click", () => setHash("#/login"));
-if (btnRegister) btnRegister.addEventListener("click", () => setHash("#/register"));
-if (btnLogout) btnLogout.addEventListener("click", async () => {
-  try { await api("/auth/logout", { method: "POST" }); } catch {}
-  state.user = null;
-  updateAuthButtons();
-  setHash("#/login");
-  render();
-});
-
-window.addEventListener("hashchange", render);
-
-// ---------- data loaders ----------
+// ================= DATA LOADERS =================
 async function loadCourses() {
-  const r = await api("/courses");
-  state.courses = (r.courses || []).slice().sort(courseSort);
-}
+  const r = await api(`/courses?lang=${state.lang}`);
+  // expected: { courses: [{id, order, title_en, title_ti, description_en, description_ti}, ...] }
+  state.courses = Array.isArray(r.courses) ? r.courses : [];
 
-async function loadProgressStatus() {
-  if (!state.user) return;
-  const r = await api("/progress/status");
-  state.statusByCourse = {};
-  for (const s of (r.status || [])) {
-    state.statusByCourse[s.courseId] = s;
-  }
+  // ✅ sort by "order" if exists, else fallback by known ids
+  const fallbackOrder = { foundation: 1, growth: 2, excellence: 3 };
+  state.courses.sort((a, b) => {
+    const ao = (typeof a.order === "number" ? a.order : fallbackOrder[a.id] || 999);
+    const bo = (typeof b.order === "number" ? b.order : fallbackOrder[b.id] || 999);
+    return ao - bo;
+  });
 }
 
 async function loadLessons(courseId) {
+  // /lessons/:courseId requires auth
   const r = await api(`/lessons/${courseId}?lang=${state.lang}`);
-  state.lessonsByCourse[courseId] = r.lessons || [];
+  const lessons = Array.isArray(r.lessons) ? r.lessons : [];
+  state.lessonsByCourse[courseId] = lessons;
 }
 
-async function loadCourseProgress(courseId) {
-  if (!state.user) return;
+async function loadProgress(courseId) {
+  // /progress/course/:courseId requires auth
   const r = await api(`/progress/course/${courseId}`);
-  state.progressByCourse[courseId] = r.byLessonIndex || {};
+  state.progressByCourse[courseId] = r;
 }
 
-// ---------- UI helpers ----------
-function progressPercent(courseId) {
-  const s = state.statusByCourse[courseId];
-  if (!s || !s.totalLessons) return 0;
-  return Math.round((s.completedLessons / s.totalLessons) * 100);
+// ================= RENDER PAGES =================
+async function render() {
+  // always try load me (doesn't crash if not logged in)
+  try { await loadMe(); } catch { state.user = null; updateAuthButtons(); }
+
+  const parts = routeParts();
+  const page = parts[0] || "dashboard";
+
+  if (page === "login") return renderLogin();
+  if (page === "register") return renderRegister();
+
+  // protected pages
+  if (!isLoggedIn()) {
+    setHash("#/login");
+    return renderLogin();
+  }
+
+  if (page === "dashboard") return renderDashboard();
+  if (page === "course") return renderCourse(parts[1]);           // #/course/:courseId
+  if (page === "lesson") return renderLesson(parts[1], parts[2]); // #/lesson/:courseId/:lessonIndex
+
+  // fallback
+  setHash("#/dashboard");
+  return renderDashboard();
 }
 
-function renderTopBarLangToggle() {
-  // optional: simple language toggle, safe even if you later remove it
-  return `
-    <div class="row" style="justify-content:flex-end; gap:8px; margin-bottom:10px;">
-      <button class="btn" id="langEn" ${state.lang === "en" ? "disabled" : ""}>EN</button>
-      <button class="btn" id="langTi" ${state.lang === "ti" ? "disabled" : ""}>TI</button>
-    </div>
-  `;
-}
-
-function wireLangToggle(afterChange) {
-  const en = document.getElementById("langEn");
-  const ti = document.getElementById("langTi");
-  if (en) en.onclick = async () => {
-    state.lang = "en";
-    await afterChange();
-  };
-  if (ti) ti.onclick = async () => {
-    state.lang = "ti";
-    await afterChange();
-  };
-}
-
-// ---------- pages ----------
+// ================= LOGIN =================
 function renderLogin() {
   appEl.innerHTML = `
     <div class="card">
       <div class="h1">Login</div>
 
       <label>Email</label>
-      <input id="email" type="email" autocomplete="email" />
+      <input id="email" type="email" placeholder="you@example.com" />
 
       <label>Password</label>
-      <input id="password" type="password" autocomplete="current-password" />
+      <input id="password" type="password" placeholder="••••••••" />
 
-      <div style="height:10px"></div>
-      <button class="btn primary" id="doLogin">Login</button>
-
-      <div class="small" id="msg" style="margin-top:10px;"></div>
+      <div style="height:12px"></div>
+      <button class="btn primary" id="loginBtn">Login</button>
+      <div class="small" id="msg" style="margin-top:10px"></div>
     </div>
   `;
 
-  document.getElementById("doLogin").onclick = async () => {
+  document.getElementById("loginBtn").onclick = async () => {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
     const msg = document.getElementById("msg");
@@ -182,7 +191,6 @@ function renderLogin() {
       const r = await api("/auth/login", { method: "POST", body: { email, password } });
       state.user = r.user;
       updateAuthButtons();
-      await loadProgressStatus();
       setHash("#/dashboard");
       render();
     } catch (e) {
@@ -191,28 +199,28 @@ function renderLogin() {
   };
 }
 
+// ================= REGISTER =================
 function renderRegister() {
   appEl.innerHTML = `
     <div class="card">
       <div class="h1">Register</div>
 
       <label>Name</label>
-      <input id="name" type="text" autocomplete="name" />
+      <input id="name" type="text" placeholder="Your name" />
 
       <label>Email</label>
-      <input id="email" type="email" autocomplete="email" />
+      <input id="email" type="email" placeholder="you@example.com" />
 
       <label>Password</label>
-      <input id="password" type="password" autocomplete="new-password" />
+      <input id="password" type="password" placeholder="min 6 characters" />
 
-      <div style="height:10px"></div>
-      <button class="btn primary" id="doRegister">Register</button>
-
-      <div class="small" id="msg" style="margin-top:10px;"></div>
+      <div style="height:12px"></div>
+      <button class="btn primary" id="regBtn">Create account</button>
+      <div class="small" id="msg" style="margin-top:10px"></div>
     </div>
   `;
 
-  document.getElementById("doRegister").onclick = async () => {
+  document.getElementById("regBtn").onclick = async () => {
     const name = document.getElementById("name").value.trim();
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
@@ -223,7 +231,6 @@ function renderRegister() {
       const r = await api("/auth/register", { method: "POST", body: { name, email, password } });
       state.user = r.user;
       updateAuthButtons();
-      await loadProgressStatus();
       setHash("#/dashboard");
       render();
     } catch (e) {
@@ -232,184 +239,268 @@ function renderRegister() {
   };
 }
 
+// ================= DASHBOARD =================
 async function renderDashboard() {
-  // Ensure base data
-  await loadCourses();
-  if (state.user) await loadProgressStatus();
-
-  const cards = state.courses.map(c => {
-    const p = progressPercent(c.id);
-    const title = state.lang === "ti" ? c.title_ti : c.title_en;
-    const desc = state.lang === "ti" ? c.description_ti : c.description_en;
-
-    return `
-      <div class="card" style="margin-bottom:14px;">
-        <div class="h2">${escapeHtml(title || c.id)}</div>
-        <div class="p">${escapeHtml(desc || "")}</div>
-
-        <div style="margin:10px 0;">
-          <div class="small">Progress: <b>${p}%</b></div>
-          <div style="background:rgba(255,255,255,0.12); border-radius:10px; height:12px; overflow:hidden;">
-            <div style="height:12px; width:${p}%; background:rgba(255,255,255,0.55);"></div>
-          </div>
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Your Levels</div>
+          <div class="small">Welcome, <b>${escapeHtml(state.user?.name || "")}</b></div>
         </div>
 
-        <button class="btn primary" onclick="location.hash='#/course/${c.id}'">Open</button>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="langEn">English</button>
+          <button class="btn" id="langTi">ትግርኛ</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="coursesWrap"></div>
+  `;
+
+  document.getElementById("langEn").onclick = async () => {
+    state.lang = "en";
+    await loadCourses();
+    renderDashboard();
+  };
+  document.getElementById("langTi").onclick = async () => {
+    state.lang = "ti";
+    await loadCourses();
+    renderDashboard();
+  };
+
+  // load courses
+  try {
+    await loadCourses();
+  } catch (e) {
+    document.getElementById("coursesWrap").innerHTML =
+      `<div class="card"><div class="small">Failed to load courses: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
+
+  // render courses
+  const html = state.courses.map(c => {
+    const title = courseTitle(c);
+    const desc = courseDesc(c);
+    return `
+      <div class="card">
+        <div class="h2">${escapeHtml(title)}</div>
+        <div class="p">${escapeHtml(desc)}</div>
+        <button class="btn ok" data-open-course="${escapeHtml(c.id)}">Open</button>
       </div>
     `;
   }).join("");
 
-  appEl.innerHTML = `
-    ${renderTopBarLangToggle()}
-    <div class="card">
-      <div class="h1">Your Levels</div>
-      <div class="small">${state.user ? `Logged in as <b>${escapeHtml(state.user.name)}</b>` : `Please login to save progress.`}</div>
-    </div>
-    ${cards || `<div class="card"><div class="small">No courses found.</div></div>`}
-  `;
+  const wrap = document.getElementById("coursesWrap");
+  wrap.innerHTML = html || `<div class="card"><div class="small">No courses found.</div></div>`;
 
-  wireLangToggle(async () => { await renderDashboard(); });
+  // attach handlers
+  wrap.querySelectorAll("[data-open-course]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-open-course");
+      setHash(`#/course/${id}`);
+      render();
+    });
+  });
 }
 
+// ================= COURSE PAGE =================
 async function renderCourse(courseId) {
-  // load lessons + progress
-  await loadLessons(courseId);
-  if (state.user) await loadCourseProgress(courseId);
+  if (!courseId) {
+    setHash("#/dashboard");
+    return render();
+  }
+
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Lessons</div>
+          <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="backDash">Back</button>
+        </div>
+      </div>
+      <div id="courseProgress" style="margin-top:10px;"></div>
+    </div>
+
+    <div id="lessonsWrap"></div>
+  `;
+
+  document.getElementById("backDash").onclick = () => {
+    setHash("#/dashboard");
+    render();
+  };
+
+  try {
+    await loadLessons(courseId);
+    await loadProgress(courseId);
+  } catch (e) {
+    document.getElementById("lessonsWrap").innerHTML =
+      `<div class="card"><div class="small">Failed to load lessons/progress: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
 
   const lessons = state.lessonsByCourse[courseId] || [];
-  const prog = state.progressByCourse[courseId] || {};
+  const pmap = state.progressByCourse[courseId]?.byLessonIndex || {};
 
-  const course = state.courses.find(x => x.id === courseId);
-  const title = course ? (state.lang === "ti" ? course.title_ti : course.title_en) : courseId;
+  const total = lessons.length;
+  const completed = Object.values(pmap).filter(x => x && x.completed).length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-  const rows = lessons.map((l) => {
-    const done = prog[l.lessonIndex]?.completed;
-    return `
-      <div class="card" style="margin-bottom:10px;">
-        <div class="row" style="justify-content:space-between; gap:10px;">
-          <div>
-            <div class="h2">Lesson ${l.lessonIndex + 1}: ${escapeHtml(l.title || "")}</div>
-            <div class="small">${done ? "✅ Completed" : "Not completed yet"}</div>
-          </div>
-          <button class="btn" onclick="location.hash='#/lesson/${courseId}/${l.lessonIndex}'">Open</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  appEl.innerHTML = `
-    ${renderTopBarLangToggle()}
-    <div class="card">
-      <div class="row" style="justify-content:space-between;">
-        <div>
-          <div class="h1">${escapeHtml(title)}</div>
-          <div class="small">Lessons: ${lessons.length}</div>
-        </div>
-        <button class="btn" onclick="location.hash='#/dashboard'">Return</button>
-      </div>
+  document.getElementById("courseProgress").innerHTML = `
+    <div class="small">Progress: <b>${completed}</b> / ${total} (${pct}%)</div>
+    <div style="height:10px; background:#1c2b3a; border-radius:8px; overflow:hidden; margin-top:6px;">
+      <div style="height:10px; width:${pct}%; background:#4caf50;"></div>
     </div>
-    ${rows || `<div class="card"><div class="small">No lessons found.</div></div>`}
   `;
 
-  wireLangToggle(async () => { await renderCourse(courseId); });
+  const listHtml = lessons
+    .sort((a, b) => a.lessonIndex - b.lessonIndex)
+    .map(l => {
+      const done = !!pmap[l.lessonIndex]?.completed;
+      return `
+        <div class="card">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <div>
+              <div class="h2">${escapeHtml(lessonTitle(l))}</div>
+              <div class="small">Lesson ${l.lessonIndex + 1} ${done ? "✅" : ""}</div>
+            </div>
+            <button class="btn ok" data-open-lesson="${l.lessonIndex}">Open</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+  const wrap = document.getElementById("lessonsWrap");
+  wrap.innerHTML = listHtml || `<div class="card"><div class="small">No lessons found.</div></div>`;
+
+  wrap.querySelectorAll("[data-open-lesson]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = btn.getAttribute("data-open-lesson");
+      setHash(`#/lesson/${courseId}/${idx}`);
+      render();
+    });
+  });
 }
 
+// ================= LESSON PAGE =================
 async function renderLesson(courseId, lessonIndexStr) {
-  const lessonIndex = Number(lessonIndexStr);
+  if (!courseId) {
+    setHash("#/dashboard");
+    return render();
+  }
 
-  // Ensure lessons loaded
-  await loadLessons(courseId);
+  const lessonIndex = Number(lessonIndexStr);
+  if (!Number.isFinite(lessonIndex)) {
+    setHash(`#/course/${courseId}`);
+    return render();
+  }
+
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Lesson</div>
+          <div class="small">Course: <b>${escapeHtml(courseId)}</b> • Lesson: <b>${lessonIndex + 1}</b></div>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="returnCourse">Return</button>
+        </div>
+      </div>
+
+      <div id="lessonProgressBar" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card" id="lessonCard">
+      <div class="small">Loading...</div>
+    </div>
+  `;
+
+  document.getElementById("returnCourse").onclick = () => {
+    setHash(`#/course/${courseId}`);
+    render();
+  };
+
+  // ensure data exists
+  try {
+    if (!state.lessonsByCourse[courseId]) await loadLessons(courseId);
+    await loadProgress(courseId);
+  } catch (e) {
+    document.getElementById("lessonCard").innerHTML =
+      `<div class="small">Failed to load: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
   const lessons = state.lessonsByCourse[courseId] || [];
   const lesson = lessons.find(x => x.lessonIndex === lessonIndex);
 
   if (!lesson) {
-    appEl.innerHTML = `
-      <div class="card">
-        <div class="h1">Lesson not found</div>
-        <button class="btn" onclick="location.hash='#/course/${courseId}'">Return</button>
-      </div>
-    `;
+    document.getElementById("lessonCard").innerHTML =
+      `<div class="small">Lesson not found.</div>`;
     return;
   }
 
-  // Load progress for reflection/completed state
-  if (state.user) await loadCourseProgress(courseId);
-  const prog = (state.progressByCourse[courseId] || {})[lessonIndex] || {};
-  const reflectionText = prog.reflectionText || "";
-
   const total = lessons.length;
-  const currentPos = lessonIndex + 1;
+  const doneCount = Object.values(state.progressByCourse[courseId]?.byLessonIndex || {})
+    .filter(x => x && x.completed).length;
+  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
-  const canBack = lessonIndex > 0;
-  const canNext = lessonIndex < total - 1;
-
-  appEl.innerHTML = `
-    ${renderTopBarLangToggle()}
-    <div class="card">
-      <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <div>
-          <div class="h1">${escapeHtml(lesson.title || "")}</div>
-          <div class="small">Lesson ${currentPos} of ${total}</div>
-        </div>
-        <button class="btn" onclick="location.hash='#/course/${courseId}'">Return</button>
-      </div>
-
-      <div style="margin-top:10px;">
-        <div style="background:rgba(255,255,255,0.12); border-radius:10px; height:12px; overflow:hidden;">
-          <div style="height:12px; width:${Math.round((currentPos / total) * 100)}%; background:rgba(255,255,255,0.55);"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="h2">Learn</div>
-      <div class="p">${escapeHtml(lesson.learnText || "")}</div>
-
-      <div style="height:10px;"></div>
-      <div class="h2">Task</div>
-      <div class="p">${escapeHtml(lesson.task || "")}</div>
-
-      <div style="height:12px;"></div>
-      <div class="h2">Reflection</div>
-      <textarea id="reflection" placeholder="Write here..." style="width:100%; min-height:120px;">${escapeHtml(reflectionText)}</textarea>
-
-      <div style="height:12px;"></div>
-
-      <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <button class="btn" id="backBtn" ${canBack ? "" : "disabled"}>Back</button>
-        <button class="btn ok" id="saveBtn">${state.user ? "Save & Complete" : "Login to save"}</button>
-        <button class="btn" id="nextBtn" ${canNext ? "" : "disabled"}>Next</button>
-      </div>
-
-      <div class="small" id="msg" style="margin-top:10px;"></div>
+  document.getElementById("lessonProgressBar").innerHTML = `
+    <div class="small">Course progress: <b>${doneCount}</b> / ${total} (${pct}%)</div>
+    <div style="height:10px; background:#1c2b3a; border-radius:8px; overflow:hidden; margin-top:6px;">
+      <div style="height:10px; width:${pct}%; background:#4caf50;"></div>
     </div>
   `;
 
-  wireLangToggle(async () => { await renderLesson(courseId, lessonIndexStr); });
+  const p = progressFor(courseId, lessonIndex);
 
-  // Wire buttons
-  const backBtn = document.getElementById("backBtn");
-  const nextBtn = document.getElementById("nextBtn");
-  const saveBtn = document.getElementById("saveBtn");
-  const msg = document.getElementById("msg");
+  const prevExists = lessons.some(x => x.lessonIndex === lessonIndex - 1);
+  const nextExists = lessons.some(x => x.lessonIndex === lessonIndex + 1);
 
-  if (backBtn) backBtn.onclick = () => {
-    if (!canBack) return;
+  document.getElementById("lessonCard").innerHTML = `
+    <div class="h2">${escapeHtml(lesson.title || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h3">Learn</div>
+    <div class="p">${escapeHtml(lesson.learnText || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h3">Task</div>
+    <div class="p">${escapeHtml(lesson.task || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h3">Reflection</div>
+    <textarea id="reflection" placeholder="Write your reflection...">${escapeHtml(p.reflectionText || "")}</textarea>
+
+    <div style="height:10px"></div>
+
+    <div class="row" style="gap:8px; flex-wrap:wrap;">
+      <button class="btn" id="prevBtn" ${prevExists ? "" : "disabled"}>Back</button>
+      <button class="btn" id="nextBtn" ${nextExists ? "" : "disabled"}>Next</button>
+      <button class="btn ok" id="saveBtn">Save & Complete</button>
+    </div>
+
+    <div class="small" id="saveMsg" style="margin-top:10px;"></div>
+  `;
+
+  document.getElementById("prevBtn").onclick = () => {
+    if (!prevExists) return;
     setHash(`#/lesson/${courseId}/${lessonIndex - 1}`);
+    render();
   };
 
-  if (nextBtn) nextBtn.onclick = () => {
-    if (!canNext) return;
+  document.getElementById("nextBtn").onclick = () => {
+    if (!nextExists) return;
     setHash(`#/lesson/${courseId}/${lessonIndex + 1}`);
+    render();
   };
 
-  if (saveBtn) saveBtn.onclick = async () => {
-    msg.textContent = "";
-    if (!state.user) {
-      msg.textContent = "Please login to save your progress.";
-      setHash("#/login");
-      return;
-    }
+  document.getElementById("saveBtn").onclick = async () => {
+    const msg = document.getElementById("saveMsg");
+    msg.textContent = "Saving...";
 
     const reflection = document.getElementById("reflection").value;
 
@@ -419,38 +510,45 @@ async function renderLesson(courseId, lessonIndexStr) {
         body: {
           courseId,
           lessonIndex,
-          completed: true,
-          reflection
+          reflection: reflection || "",
+          completed: true
         }
       });
 
       msg.textContent = "Saved ✅";
-      // refresh progress
-      await loadProgressStatus();
-      await loadCourseProgress(courseId);
+      await loadProgress(courseId);
+
+      // auto move to next if exists
+      if (nextExists) {
+        setTimeout(() => {
+          setHash(`#/lesson/${courseId}/${lessonIndex + 1}`);
+          render();
+        }, 300);
+      }
     } catch (e) {
       msg.textContent = "Save failed: " + e.message;
     }
   };
 }
 
-// ---------- router ----------
-async function render() {
-  // keep buttons correct
-  try { await loadMe(); } catch { state.user = null; updateAuthButtons(); }
+// ================= HEADER BUTTONS =================
+if (btnLogin) btnLogin.addEventListener("click", () => { setHash("#/login"); render(); });
+if (btnRegister) btnRegister.addEventListener("click", () => { setHash("#/register"); render(); });
 
-  const [page, a, b] = getHashParts();
-
-  if (!page || page === "dashboard") return renderDashboard();
-  if (page === "login") return renderLogin();
-  if (page === "register") return renderRegister();
-  if (page === "course") return renderCourse(a);
-  if (page === "lesson") return renderLesson(a, b);
-
-  return renderDashboard();
+if (btnLogout) {
+  btnLogout.addEventListener("click", async () => {
+    try { await api("/auth/logout", { method: "POST" }); } catch {}
+    state.user = null;
+    updateAuthButtons();
+    setHash("#/login");
+    render();
+  });
 }
 
-// ---------- boot ----------
+// ================= ROUTER =================
+window.addEventListener("hashchange", render);
+
+// ================= BOOT =================
 (function boot() {
   if (!location.hash) setHash("#/dashboard");
   render();
