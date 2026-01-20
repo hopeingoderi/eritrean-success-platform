@@ -4,33 +4,56 @@ const { query } = require("../db_pg");
 
 const router = express.Router();
 
-/**
- * GET /api/courses
- * Returns list of courses (foundation, growth, excellence)
- */
+function sortRank(id) {
+  if (id === "foundation") return 1;
+  if (id === "growth") return 2;
+  if (id === "excellence") return 3;
+  return 99;
+}
+
 router.get("/", async (req, res) => {
+  const lang = req.query.lang === "ti" ? "ti" : "en";
+
   try {
+    // Try multilingual description columns first (description_en / description_ti)
     const r = await query(
-      `SELECT
-         id,
-         title_en,
-         title_ti,
-         description_en,
-         description_ti
-       FROM courses
-       ORDER BY
-         CASE id
-           WHEN 'foundation' THEN 1
-           WHEN 'growth' THEN 2
-           WHEN 'excellence' THEN 3
-           ELSE 99
-         END`
+      `
+      SELECT
+        id,
+        title_${lang} AS title,
+        description_${lang} AS description
+      FROM courses
+      `,
+      []
     );
 
-    res.json({ courses: r.rows });
+    const courses = (r.rows || []).sort((a, b) => sortRank(a.id) - sortRank(b.id));
+    return res.json({ courses });
   } catch (err) {
+    // If description_en does not exist, fall back to a single "description" column
+    // (Postgres undefined_column error code is 42703)
+    if (err && err.code === "42703") {
+      try {
+        const r2 = await query(
+          `
+          SELECT
+            id,
+            title_${lang} AS title,
+            description AS description
+          FROM courses
+          `,
+          []
+        );
+        const courses = (r2.rows || []).sort((a, b) => sortRank(a.id) - sortRank(b.id));
+        return res.json({ courses });
+      } catch (err2) {
+        console.error("COURSES ERROR (fallback):", err2);
+        return res.status(500).json({ error: "Server error" });
+      }
+    }
+
     console.error("COURSES ERROR:", err);
-    res.status(500).json({ error: "Failed to load courses" });
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
