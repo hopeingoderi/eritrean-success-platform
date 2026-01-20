@@ -10,50 +10,103 @@
   --danger:#fb7185;
   --shadow: 0 10px 24px rgba(0,0,0,.35);
   --radius: 18px;
+
+  /* Child-friendly tweaks */
+  --radius2: 22px;
+  --shadow2: 0 14px 30px rgba(0,0,0,.45);
 }
 
 *{box-sizing:border-box}
+
+html, body { height: 100%; }
+
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  background: radial-gradient(1200px 600px at 10% 0%, rgba(96,165,250,.16), transparent),
-              radial-gradient(900px 500px at 90% 20%, rgba(94,234,212,.12), transparent),
-              var(--bg);
+  background:
+    radial-gradient(1200px 600px at 10% 0%, rgba(96,165,250,.20), transparent),
+    radial-gradient(900px 500px at 90% 20%, rgba(94,234,212,.16), transparent),
+    var(--bg);
   color:var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
+a { color: inherit; }
+
+.hidden{ display:none !important; }
+
+/* ================= TOPBAR / HEADER ================= */
 .topbar{
   position:sticky; top:0; z-index:10;
   display:flex; align-items:center; justify-content:space-between;
+  gap: 12px;
   padding:14px 16px;
-  background: rgba(11,18,32,.9);
+  background: rgba(11,18,32,.92);
   backdrop-filter: blur(10px);
   border-bottom:1px solid var(--line);
 }
 
-.brand{display:flex; gap:12px; align-items:center}
+.brand{display:flex; gap:12px; align-items:center; min-width: 0;}
 .logo{
-  width:44px;height:44px;border-radius:14px;
+  width:46px;height:46px;border-radius:16px;
   display:grid;place-items:center;
   background: linear-gradient(135deg, rgba(94,234,212,.18), rgba(96,165,250,.18));
   border:1px solid var(--line);
   box-shadow: var(--shadow);
   font-size:20px;
+  flex: 0 0 auto;
 }
-.title{font-weight:800; letter-spacing:.2px}
-.subtitle{color:var(--muted); font-size:12px}
-.topActions{display:flex; gap:10px; align-items:center}
+.brandText{min-width: 0;}
+.title{
+  font-weight:900;
+  letter-spacing:.2px;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+.subtitle{color:var(--muted); font-size:12px; margin-top:2px;}
 
+.topActions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex: 0 0 auto;
+}
+
+/* Make top buttons not tiny on mobile */
+@media (max-width: 520px){
+  .topbar{ padding: 12px 12px; }
+  .subtitle{ display:none; }
+  .logo{ width:42px; height:42px; border-radius:14px; }
+}
+
+/* ================= LAYOUT ================= */
 .container{max-width: 1100px; margin: 0 auto; padding: 18px;}
-.footer{margin-top:24px; padding:18px 0; border-top:1px solid var(--line);}
+.footer{
+  margin-top:24px;
+  padding:18px 0;
+  border-top:1px solid var(--line);
+  color: var(--muted);
+}
+
+/* Give space at bottom for sticky lesson buttons on mobile */
+body.hasLessonActions .container{
+  padding-bottom: 90px;
+}
 
 .card{
-  background: rgba(18,32,68,.65);
+  background: rgba(18,32,68,.68);
   border:1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius2);
   padding:16px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow2);
   margin-bottom:14px;
+}
+
+.card.soft{
+  background: rgba(18,32,68,.55);
 }
 
 .grid{display:grid; gap:14px}
@@ -65,95 +118,186 @@ body{
 
 .h1{font-size:28px; margin:0 0 8px 0;}
 .h2{font-size:18px; margin:0 0 10px 0;}
-.p{color:var(--muted); margin:0 0 10px 0; line-height:1.6;}
+.p{color:var(--muted); margin:0 0 10px 0; line-height:1.7;}
 .small{color:var(--muted); font-size:12px; line-height:1.5}
 
-.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between}
+.row{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between
+}
 
 .badge{
   display:inline-flex; align-items:center; gap:8px;
   padding:6px 10px;
   border-radius:999px;
   border:1px solid var(--line);
-  background:rgba(255,255,255,.04);
+  background:rgba(255,255,255,.05);
   color:var(--text);
   font-size:12px;
 }
 
+hr{border:none; border-top:1px solid var(--line); margin:14px 0;}
+
+/* ================= BUTTONS ================= */
 .btn{
   border:1px solid var(--line);
-  background:rgba(255,255,255,.06);
+  background:rgba(255,255,255,.08);
   color:var(--text);
-  padding:10px 12px;
-  border-radius:14px;
+  padding:12px 14px;
+  border-radius:16px;
   cursor:pointer;
-  font-weight:700;
+  font-weight:800;
   text-decoration:none;
   display:inline-flex;
   align-items:center;
   justify-content:center;
+  gap: 8px;
+  transition: transform .06s ease, background .12s ease, border-color .12s ease;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px; /* mobile tap target */
 }
-.btn:hover{background:rgba(255,255,255,.09)}
+
+.btn:hover{background:rgba(255,255,255,.11)}
+.btn:active{transform: translateY(1px)}
+
 .btn.primary{
-  border-color: rgba(94,234,212,.35);
-  background: rgba(94,234,212,.12);
+  border-color: rgba(94,234,212,.40);
+  background: rgba(94,234,212,.14);
 }
-.btn.primary:hover{background: rgba(94,234,212,.18)}
+.btn.primary:hover{background: rgba(94,234,212,.20)}
 .btn.secondary{
-  border-color: rgba(96,165,250,.35);
-  background: rgba(96,165,250,.12);
+  border-color: rgba(96,165,250,.40);
+  background: rgba(96,165,250,.14);
 }
-.btn.secondary:hover{background: rgba(96,165,250,.18)}
+.btn.secondary:hover{background: rgba(96,165,250,.20)}
 .btn.danger{
-  border-color: rgba(251,113,133,.35);
-  background: rgba(251,113,133,.10);
+  border-color: rgba(251,113,133,.42);
+  background: rgba(251,113,133,.12);
 }
-.btn.danger:hover{background: rgba(251,113,133,.16)}
+.btn.danger:hover{background: rgba(251,113,133,.18)}
 .btn.ghost{
   background: transparent;
 }
 
+.btn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+  transform:none;
+}
+
+/* ================= INPUTS ================= */
 input[type="text"], input[type="email"], input[type="password"], textarea{
   width:100%;
   border:1px solid var(--line);
-  background:rgba(255,255,255,.04);
+  background:rgba(255,255,255,.05);
   color:var(--text);
-  border-radius:14px;
-  padding:10px 12px;
+  border-radius:16px;
+  padding:12px 12px;
   outline:none;
+  min-height: 44px;
 }
-textarea{min-height:100px; resize:vertical;}
+textarea{min-height:110px; resize:vertical;}
+label{ display:block; margin: 10px 0 6px; color: var(--muted); font-size: 13px; }
 
+/* ================= PROGRESS ================= */
 .progressWrap{
   border:1px solid var(--line);
-  background:rgba(255,255,255,.04);
+  background:rgba(255,255,255,.05);
   border-radius:999px;
   overflow:hidden;
-  height:12px;
+  height:14px;
 }
-.progressBar{height:100%; width:0% ; background: linear-gradient(90deg, rgba(94,234,212,.9), rgba(96,165,250,.9));}
+.progressBar{
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, rgba(94,234,212,.95), rgba(96,165,250,.95));
+}
 
-hr{border:none; border-top:1px solid var(--line); margin:14px 0;}
+/* ================= COURSE CARDS ================= */
+.courseCard{
+  cursor:pointer;
+  transition: transform .10s ease, background .12s ease;
+}
+.courseCard:hover{
+  transform: translateY(-1px);
+  background: rgba(18,32,68,.75);
+}
 
+.courseMeta{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.courseTitle{
+  font-size: 18px;
+  font-weight: 900;
+  margin: 0;
+}
+.courseDesc{
+  color: var(--muted);
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+/* ================= LESSON NAV (Back/Save/Next) ================= */
+/* Use this wrapper in app.js:
+   <div class="lessonActions">
+     <button class="btn" id="btnBack">Back</button>
+     <button class="btn primary" id="btnSave">Save</button>
+     <button class="btn secondary" id="btnNext">Next</button>
+   </div>
+*/
+.lessonActions{
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:center;
+
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(11,18,32,.92);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 30px rgba(0,0,0,.45);
+}
+
+.lessonActions .btn{
+  flex: 1 1 0;
+}
+
+/* On mobile: make it fixed to always be visible */
+@media (max-width: 700px){
+  .lessonActions{
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+}
+
+/* ================= QUIZ OPTIONS ================= */
 .quizOption{
   display:flex; gap:10px; align-items:flex-start;
-  padding:10px 12px;
+  padding:12px 12px;
   border:1px solid var(--line);
-  border-radius:14px;
-  background:rgba(255,255,255,.04);
+  border-radius:16px;
+  background:rgba(255,255,255,.05);
   cursor:pointer;
   margin-bottom:10px;
 }
-.quizOption:hover{background:rgba(255,255,255,.07)}
+.quizOption:hover{background:rgba(255,255,255,.08)}
 .quizOption input{margin-top:4px;}
 
-.btn:disabled{
-  opacity: .5;
-  cursor: not-allowed;
-}
 .lockNote{
   color: var(--muted);
   font-size: 12px;
   margin-top: 8px;
 }
+
+
 
