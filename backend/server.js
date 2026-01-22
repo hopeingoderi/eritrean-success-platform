@@ -1,3 +1,4 @@
+require("dotenv").config();
 process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT EXCEPTION:", err);
 });
@@ -9,7 +10,6 @@ console.log("Booting API. NODE_ENV =", process.env.NODE_ENV);
 console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
 console.log("PORT from env =", process.env.PORT);
 
-require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
