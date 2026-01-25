@@ -5,15 +5,19 @@ const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
+// ✅ Safe JSON parser (prevents crashes when DB contains "undefined", "null", empty string, etc.)
 function safeParseJson(value) {
-  if (value == null) return null;
+  if (value === null || value === undefined) return null;
 
-  // If DB contains the literal string "undefined" or empty string, ignore it.
+  // If DB value is a string, validate + parse safely
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed || trimmed.toLowerCase() === "undefined" || trimmed.toLowerCase() === "null") {
+
+    // 🔥 IMPORTANT: block invalid JSON strings that crash JSON.parse
+    if (trimmed === "" || trimmed.toLowerCase() === "undefined" || trimmed.toLowerCase() === "null") {
       return null;
     }
+
     try {
       return JSON.parse(trimmed);
     } catch {
@@ -21,7 +25,7 @@ function safeParseJson(value) {
     }
   }
 
-  // If it's already an object/array (json/jsonb), return as-is.
+  // If it's already an object/array (json/jsonb), return as-is
   if (typeof value === "object") return value;
 
   return null;
@@ -29,6 +33,7 @@ function safeParseJson(value) {
 
 /**
  * GET /api/lessons/:courseId?lang=en|ti
+ * Returns lesson content for student SPA
  */
 router.get("/:courseId", requireAuth, async (req, res) => {
   try {
