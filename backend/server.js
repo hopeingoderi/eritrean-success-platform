@@ -1,83 +1,88 @@
 // backend/server.js
-require("dotenv").config();
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
 
-const express = require("express");
-const cors = require("cors");
-const session = require("express-session");
+import authRoutes from "./routes/auth.js";
+import coursesRoutes from "./routes/courses.js";
+import lessonsRoutes from "./routes/lessons.js";
+import progressRoutes from "./routes/progress.js";
+import examsRoutes from "./routes/exams.js";
+import certificatesRoutes from "./routes/certificates.js";
+import adminRoutes from "./routes/admin.js";
+import devRoutes from "./routes/dev.js";
 
-// Routes
-const authRoutes = require("./routes/auth");
-const coursesRoutes = require("./routes/courses");
-const lessonsRoutes = require("./routes/lessons");
-const progressRoutes = require("./routes/progress");
-const examsRoutes = require("./routes/exams");
-const certificatesRoutes = require("./routes/certificates");
+dotenv.config();
 
 const app = express();
+
+/* ------------------- CONFIG ------------------- */
+
 const PORT = process.env.PORT || 4000;
+const CLIENT_URL =
+  process.env.CLIENT_URL ||
+  "https://riseeritrea.com";
 
-// ----------------------------------------------------
-// MIDDLEWARE
-// ----------------------------------------------------
-app.use(express.json());
-
-// CORS (Render + local + cookies)
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",")
-  : true;
+/* ------------------- MIDDLEWARE ------------------- */
 
 app.use(
   cors({
-    origin: corsOrigins,
-    credentials: true
+    origin: CLIENT_URL,
+    credentials: true,
   })
 );
 
-// Session (required for login persistence)
-app.use(
-  session({
-    name: "esj.sid",
-    secret: process.env.SESSION_SECRET || "dev-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
-    }
-  })
-);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// ----------------------------------------------------
-// ROUTES
-// ----------------------------------------------------
+/* ------------------- HEALTH CHECK ------------------- */
+
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    service: "Eritrean Success Journey API",
+    time: new Date().toISOString(),
+  });
+});
+
+/* ------------------- API ROUTES ------------------- */
+
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", coursesRoutes);
 app.use("/api/lessons", lessonsRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/exams", examsRoutes);
 app.use("/api/certificates", certificatesRoutes);
+app.use("/api/admin", adminRoutes);
 
-// ----------------------------------------------------
-// HEALTH CHECK
-// ----------------------------------------------------
-app.get("/", (req, res) => {
-  res.send("✅ Eritrean Success Journey API is running");
+// ⚠️ dev routes only if enabled
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api/dev", devRoutes);
+}
+
+/* ------------------- 404 HANDLER ------------------- */
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Not found",
+    path: req.originalUrl,
+  });
 });
 
-// ----------------------------------------------------
-// GLOBAL ERROR HANDLER
-// ----------------------------------------------------
+/* ------------------- ERROR HANDLER ------------------- */
+
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
-  res.status(500).json({ error: "Server error" });
+
+  res.status(500).json({
+    error: "Server error",
+  });
 });
 
-// ----------------------------------------------------
-// START SERVER
-// ----------------------------------------------------
+/* ------------------- START SERVER ------------------- */
+
 app.listen(PORT, () => {
-  console.log(`🚀 API running on port ${PORT}`);
-  console.log("NODE_ENV =", process.env.NODE_ENV);
-  console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
+  console.log(`✅ API running on port ${PORT}`);
 });
