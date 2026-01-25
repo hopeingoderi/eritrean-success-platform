@@ -2,107 +2,108 @@
 require("dotenv").config();
 
 const express = require("express");
-const session = require("express-session");
 const cors = require("cors");
+const session = require("express-session");
 
-const authRoutes = require("./routes/auth");
-const coursesRoutes = require("./routes/courses");
-const lessonsRoutes = require("./routes/lessons");
-const progressRoutes = require("./routes/progress");
-const examsRoutes = require("./routes/exams");
-const certificatesRoutes = require("./routes/certificates");
-const adminRoutes = require("./routes/admin");
-
-// optional dev routes (only if file exists / you use it)
-let devRoutes = null;
+// If you already use a PG session store, keep it.
+// If connect-pg-simple is installed, this will persist sessions across restarts.
+let PgSession = null;
 try {
-  devRoutes = require("./routes/dev");
-} catch {}
+  PgSession = require("connect-pg-simple")(session);
+} catch {
+  PgSession = null;
+}
 
 const app = express();
 
-/* -------------------- CONFIG -------------------- */
-const PORT = process.env.PORT || 4000;
+// IMPORTANT for Render / proxies (so secure cookies work)
+app.set("trust proxy", 1);
 
-// Render env shows: CORS_ORIGIN = "https://riseeritrea.com,https://www.riseeritrea.com"
-const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:5500,http://localhost:3000")
+// ---------- CORS ----------
+const corsOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const isProd = process.env.NODE_ENV === "production";
-
-/* ------------------ MIDDLEWARE ------------------ */
 app.use(
   cors({
     origin: function (origin, cb) {
-      // allow requests with no origin (like curl, Postman)
+      // allow tools / curl (no origin)
       if (!origin) return cb(null, true);
 
-      if (CORS_ORIGIN.includes(origin)) return cb(null, true);
+      // allow if in list
+      if (corsOrigins.length === 0 || corsOrigins.includes(origin)) return cb(null, true);
 
-      return cb(new Error("Not allowed by CORS: " + origin));
+      return cb(new Error("CORS blocked: " + origin));
     },
     credentials: true,
   })
 );
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "2mb" }));
 
-/* ------------------- SESSION -------------------- */
-app.set("trust proxy", 1); // needed on Render for secure cookies
+// ---------- SESSION ----------
+const isProd = process.env.NODE_ENV === "production";
 
-app.use(
-  session({
-    name: "esj.sid",
-    secret: process.env.SESSION_SECRET || "dev-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: isProd ? "none" : "lax",
-      secure: isProd, // must be true on https (Render + custom domain)
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-    },
-  })
-);
+// cookie domain is OPTIONAL; only use if you set it.
+// Example: SESSION_DOMAIN=.riseeritrea.com
+const cookieDomain = process.env.SESSION_DOMAIN || undefined;
 
-/* -------------------- LOGS ---------------------- */
-console.log("Booting API. NODE_ENV =", process.env.NODE_ENV || "(not set)");
-console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
-console.log("PORT from env =", PORT);
-console.log("CORS_ORIGIN =", CORS_ORIGIN);
+const sessionOptions = {
+  name: "sid",
+  secret: process.env.SESSION_SECRET || "dev-secret-change-me",
+  resave: false,
+  saveUninitialized: false,
+  proxy: true,
+  cookie: {
+    httpOnly: true,
+    secure: isProd,                // MUST be true on https (Render prod)
+    sameSite: isProd ? "none" : "lax", // "none" is safest for subdomain setups with fetch+credentials
+    domain: cookieDomain,          // optional (only if you set SESSION_DOMAIN)
+    maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
+  },
+};
 
-/* -------------------- ROUTES -------------------- */
-app.get("/", (req, res) => res.json({ ok: true }));
-
-app.use("/api/auth", authRoutes);
-app.use("/api/courses", coursesRoutes);
-app.use("/api/lessons", lessonsRoutes);
-app.use("/api/progress", progressRoutes);
-app.use("/api/exams", examsRoutes);
-app.use("/api/certificates", certificatesRoutes);
-app.use("/api/admin", adminRoutes);
-
-// dev routes only in non-prod
-if (!isProd && devRoutes) {
-  console.log("DEV routes enabled");
-  app.use("/api/dev", devRoutes);
+// Use PG session store if available + DATABASE_URL exists
+if (PgSession && process.env.DATABASE_URL) {
+  sessionOptions.store = new PgSession({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: true,
+  });
 }
 
-/* ------------------ 404 HANDLER ----------------- */
-app.use((req, res) => {
-  res.status(404).json({ error: "Not found", path: req.originalUrl });
-});
+app.use(session(sessionOptions));
 
-/* ---------------- ERROR HANDLER ----------------- */
+// ---------- ROUTES ----------
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/courses", require("./routes/courses"));
+app.use("/api/lessons", require("./routes/lessons"));
+app.use("/api/progress", require("./routes/progress"));
+app.use("/api/exams", require("./routes/exams"));
+app.use("/api/certificates", require("./routes/certificates"));
+app.use("/api/admin", require("./routes/admin"));
+
+// Optional dev routes (only in development)
+if (!isProd) {
+  try {
+    app.use("/api/dev", require("./routes/dev"));
+  } catch {}
+}
+
+// ---------- ERROR HANDLER ----------
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
   res.status(500).json({ error: "Server error" });
 });
 
-/* -------------------- START --------------------- */
+// ---------- START ----------
+const PORT = process.env.PORT || 4000;
+console.log("Booting API. NODE_ENV =", process.env.NODE_ENV);
+console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
+console.log("PORT from env =", PORT);
+
 app.listen(PORT, () => {
-  console.log(`✅ API running on port ${PORT}`);
+  console.log(`API running on port ${PORT}`);
 });
