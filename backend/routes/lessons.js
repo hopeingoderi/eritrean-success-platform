@@ -6,34 +6,30 @@ const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
 /**
- * Safely parse JSON that may be:
+ * Safe JSON parser for quiz_json
+ * Handles:
  * - null
- * - empty string
+ * - undefined
  * - "undefined"
+ * - ""
  * - invalid JSON
- * - already an object (json/jsonb)
+ * - json/jsonb objects
  */
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;
 
   if (typeof value === "object") {
-    return value; // already parsed (json/jsonb)
+    return value; // json/jsonb already parsed
   }
 
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (
-      trimmed === "" ||
-      trimmed.toLowerCase() === "undefined" ||
-      trimmed.toLowerCase() === "null"
-    ) {
-      return null;
-    }
+    const v = value.trim();
+    if (!v || v === "undefined" || v === "null") return null;
 
     try {
-      return JSON.parse(trimmed);
-    } catch (err) {
-      console.warn("⚠️ Invalid quiz_json skipped:", trimmed);
+      return JSON.parse(v);
+    } catch {
+      console.warn("⚠️ Invalid quiz_json ignored:", v);
       return null;
     }
   }
@@ -43,7 +39,6 @@ function safeParseJson(value) {
 
 /**
  * GET /api/lessons/:courseId?lang=en|ti
- * Returns lessons for the student app
  */
 router.get("/:courseId", requireAuth, async (req, res) => {
   try {
@@ -68,7 +63,7 @@ router.get("/:courseId", requireAuth, async (req, res) => {
       [courseId]
     );
 
-    const lessons = r.rows.map((row) => ({
+    const lessons = r.rows.map(row => ({
       lessonIndex: Number(row.lesson_index),
       title:
         lang === "ti"
