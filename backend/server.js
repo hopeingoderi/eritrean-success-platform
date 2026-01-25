@@ -1,71 +1,98 @@
-require("dotenv").config({ path: __dirname + "/.env" });
-process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT EXCEPTION:", err);
-});
-process.on("unhandledRejection", (err) => {
-  console.error("UNHANDLED REJECTION:", err);
-});
-
-console.log("Booting API. NODE_ENV =", process.env.NODE_ENV);
-console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
-console.log("PORT from env =", process.env.PORT);
+// backend/server.js
+require("dotenv").config();
 
 const express = require("express");
-const session = require("express-session");
-const pgSession = require("connect-pg-simple")(session);
 const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const cookieParser = require("cookie-parser");
-const { pool } = require("./db_pg");
+const session = require("express-session");
+
+// Routes
+const authRoutes = require("./routes/auth");
+const coursesRoutes = require("./routes/courses");
+const lessonsRoutes = require("./routes/lessons");
+const progressRoutes = require("./routes/progress");
+const examsRoutes = require("./routes/exams");
+const certificatesRoutes = require("./routes/certificates");
 
 const app = express();
 
+// ---------------- ENV ----------------
+const NODE_ENV = process.env.NODE_ENV || "development";
+const isProd = NODE_ENV === "production";
+
+const PORT = Number(process.env.PORT || 4000);
+
+// IMPORTANT: comma-separated list in Render env:
+// CORS_ORIGIN="https://riseeritrea.com,https://www.riseeritrea.com,http://localhost:5500,http://127.0.0.1:5500"
+const allowedOrigins = String(process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+console.log("Booting API. NODE_ENV =", NODE_ENV);
+console.log("Allowed origins =", allowedOrigins);
+
+// Render / proxies (IMPORTANT)
 app.set("trust proxy", 1);
 
-app.use(helmet());
-app.use(rateLimit({ windowMs: 60_000, max: 200 }));
+// ---------------- MIDDLEWARE ----------------
 app.use(express.json({ limit: "1mb" }));
-app.use(cookieParser());
 
-app.use(cors({
-  origin: true,          // allow any origin (ONLY for local dev)
-  credentials: true
-}));
+// CORS (must be BEFORE session routes for correct headers)
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow same-origin / server-to-server / curl (no Origin header)
+      if (!origin) return cb(null, true);
 
-const isProd = process.env.NODE_ENV === "production";
+      // allow if origin is in allowlist
+      if (allowedOrigins.includes(origin)) return cb(null, true);
 
-app.use(session({
-  store: new pgSession({ pool, tableName: "session" }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-    maxAge: 1000 * 60 * 60 * 24 * 14
-  }
-}));
+      // block otherwise
+      return cb(new Error("CORS blocked origin: " + origin), false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
+// Session cookie settings
+app.use(
+  session({
+    name: "esj.sid",
+    secret: process.env.SESSION_SECRET || "dev-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      // ✅ THIS is the big one:
+      // For cross-site cookies (riseeritrea.com -> api.riseeritrea.com) you need SameSite=None + Secure=true
+      sameSite: isProd ? "none" : "lax",
+      secure: isProd, // must be true in production (https)
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    },
+  })
+);
 
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+// Health check
+app.get("/", (req, res) => res.send("OK"));
+app.get("/health", (req, res) => res.json({ ok: true, env: NODE_ENV }));
 
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/courses", require("./routes/courses"));
-app.use("/api/lessons", require("./routes/lessons"));
-app.use("/api/progress", require("./routes/progress"));
-app.use("/api/exams", require("./routes/exams"));
-app.use("/api/certificates", require("./routes/certificates"));
+// ---------------- ROUTES ----------------
+app.use("/api/auth", authRoutes);
+app.use("/api/courses", coursesRoutes);
+app.use("/api/lessons", lessonsRoutes);
+app.use("/api/progress", progressRoutes);
+app.use("/api/exams", examsRoutes);
+app.use("/api/certificates", certificatesRoutes);
 
-// admin routers share same prefix
-app.use("/api/admin", require("./routes/admin_lessons"));
-app.use("/api/admin", require("./routes/admin_exams"));
+// Global error handler (helps you see the real problem)
+app.use((err, req, res, next) => {
+  console.error("SERVER ERROR:", err);
+  res.status(500).json({ error: "Server error" });
+});
 
-// more natural
-const PORT = process.env.PORT || 4000;
-
+// ---------------- START ----------------
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
 });
-

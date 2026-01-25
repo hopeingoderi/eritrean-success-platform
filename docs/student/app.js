@@ -13,7 +13,23 @@
 // - /api/certificates/claim (POST)      body: { courseId }
 // - /api/certificates/:courseId/pdf (GET)
 
-const API_BASE = "https://api.riseeritrea.com/api";
+// ✅ PRODUCTION (uncomment when deploying)
+// const API_BASE = "https://api.riseeritrea.com/api";
+
+// ✅ LOCAL DEV
+// const API_BASE = "http://localhost:4000/api";
+// ✅ Auto API base (local vs production)
+const API_BASE = (() => {
+  const host = window.location.hostname;
+
+  // If you open the student app on GitHub Pages (riseeritrea.com), use production API
+  if (host === "riseeritrea.com" || host === "www.riseeritrea.com") {
+    return "https://api.riseeritrea.com/api";
+  }
+
+  // If you run locally (localhost / 127.0.0.1), use local backend
+  return "http://localhost:4000/api";
+})();
 
 const appEl = document.getElementById("app");
 const navEl = document.getElementById("nav");
@@ -56,11 +72,13 @@ function courseFallbackOrder(courseId) {
 }
 
 function courseTitle(c) {
-  return state.lang === "ti" ? (c.title_ti || c.title_en || "") : (c.title_en || c.title_ti || "");
+  // backend/courses.js returns { title, intro } not title_en/title_ti
+  return c?.title || c?.title_en || c?.title_ti || c?.id || "";
 }
+
 function courseDesc(c) {
-  // your DB uses intro_en/intro_ti (not description_*)
-  return state.lang === "ti" ? (c.intro_ti || c.intro_en || "") : (c.intro_en || c.intro_ti || "");
+  // backend/courses.js returns { title, intro }
+  return c?.intro || c?.intro_en || c?.intro_ti || "";
 }
 
 function progressFor(courseId, lessonIndex) {
@@ -112,9 +130,11 @@ window.go = function (page) {
 async function loadCourses() {
   const r = await api(`/courses?lang=${state.lang}`);
   state.courses = Array.isArray(r.courses) ? r.courses : [];
+
+  // Courses route currently orders by id, but keep stable fallback ordering anyway
   state.courses.sort((a, b) => {
-    const ao = Number.isFinite(a.order) ? a.order : courseFallbackOrder(a.id);
-    const bo = Number.isFinite(b.order) ? b.order : courseFallbackOrder(b.id);
+    const ao = courseFallbackOrder(a.id);
+    const bo = courseFallbackOrder(b.id);
     return ao - bo;
   });
 }
@@ -495,7 +515,7 @@ async function renderLesson(courseId, lessonIndexStr) {
   document.getElementById("nextBtn").onclick = () => {
     if (!nextExists) return;
     const nowP = progressFor(courseId, lessonIndex);
-    if (!nowP.completed) return; // hard lock
+    if (!nowP.completed) return;
     setHash(`#/lesson/${courseId}/${lessonIndex + 1}`);
     render();
   };
@@ -514,7 +534,6 @@ async function renderLesson(courseId, lessonIndexStr) {
       msg.textContent = "Saved ✅";
       await loadProgress(courseId);
 
-      // unlock next
       const nextBtn = document.getElementById("nextBtn");
       if (nextExists && nextBtn) nextBtn.disabled = false;
       const note = document.getElementById("nextNote");
@@ -613,7 +632,6 @@ async function renderExam(courseId) {
     }
 
     try {
-      // ✅ Correct route: POST /api/exams/:courseId/submit
       const r = await api(`/exams/${courseId}/submit`, {
         method: "POST",
         body: { answers, lang: state.lang }

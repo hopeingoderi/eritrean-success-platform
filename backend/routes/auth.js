@@ -1,60 +1,168 @@
+// backend/routes/auth.js
+//
+// Auth routes for Eritrean Success Journey
+// Cookie-based sessions (req.session) so frontend calls with:
+//   fetch(..., { credentials: "include" })
+//
+// Routes:
+//   POST /api/auth/register   { name, email, password }
+//   POST /api/auth/login      { email, password }
+//   POST /api/auth/logout
+//   GET  /api/auth/me
+//
+// Response shape:
+//   { user: { id, name, email, isAdmin } }
+
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const { z } = require("zod");
 const { query } = require("../db_pg");
 
 const router = express.Router();
 
+/** Normalize email */
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+/** Strict-ish email check */
+function isValidEmail(email) {
+  const e = normalizeEmail(email);
+  return e.includes("@") && e.split("@")[1]?.includes(".");
+}
+
+function safeUserRowToSessionUser(row) {
+  const role = String(row?.role || "").toLowerCase();
+  const isAdmin = role === "admin";
+
+  return {
+    id: row.id,
+    name: row.name || "",
+    email: row.email || "",
+    isAdmin
+  };
+}
+
+/** Promisified session helpers */
+function sessionRegenerate(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+function sessionSave(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+/**
+ * POST /api/auth/register
+ * Creates a user and logs them in immediately
+ */
 router.post("/register", async (req, res) => {
-  const schema = z.object({
-    name: z.string().min(2),
-    email: z.string().email(),
-    password: z.string().min(6)
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || "");
 
-  const { name, email, password } = parsed.data;
+    if (!name) return res.status(400).json({ error: "Name is required" });
+    if (!isValidEmail(email)) return res.status(400).json({ error: "Valid email is required" });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
-  const exists = await query("SELECT id FROM users WHERE email=$1", [email]);
-  if (exists.rows.length) return res.status(409).json({ error: "Email already used" });
+    const existing = await query("SELECT id FROM users WHERE email=$1", [email]);
+    if (existing.rows.length) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
 
-  const hash = bcrypt.hashSync(password, 10);
-  const r = await query(
-    "INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role",
-    [name, email, hash, "student"]
-  );
+    const passwordHash = await bcrypt.hash(password, 10);
 
-  req.session.user = r.rows[0];
-  res.json({ user: req.session.user });
+    // Your table columns: name, email, password_hash, role
+    // Default role is "student" (change if you want)
+    const ins = await query(
+      `INSERT INTO users (name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, role`,
+      [name, email, passwordHash, "student"]
+    );
+
+    const userRow = ins.rows[0];
+
+    // IMPORTANT: regenerate + save so cookie gets set reliably
+    await sessionRegenerate(req);
+    req.session.user = safeUserRowToSessionUser(userRow);
+    await sessionSave(req);
+
+    return res.json({ user: req.session.user });
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
+/**
+ * POST /api/auth/login
+ * Creates a session if email/password matches.
+ */
 router.post("/login", async (req, res) => {
-  const schema = z.object({
-    email: z.string().email(),
-    password: z.string().min(1)
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || "");
 
-  const { email, password } = parsed.data;
-  const r = await query("SELECT id, name, email, password_hash, role FROM users WHERE email=$1", [email]);
-  if (!r.rows.length) return res.status(401).json({ error: "Invalid email or password" });
+    if (!isValidEmail(email)) return res.status(400).json({ error: "Valid email is required" });
+    if (!password) return res.status(400).json({ error: "Password is required" });
 
-  const u = r.rows[0];
-  const ok = bcrypt.compareSync(password, u.password_hash);
-  if (!ok) return res.status(401).json({ error: "Invalid email or password" });
+    const r = await query(
+      `SELECT id, name, email, password_hash, role
+       FROM users
+       WHERE email=$1`,
+      [email]
+    );
 
-  req.session.user = { id: u.id, name: u.name, email: u.email, role: u.role };
-  res.json({ user: req.session.user });
+    if (!r.rows.length) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const userRow = r.rows[0];
+    const ok = await bcrypt.compare(password, userRow.password_hash || "");
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // IMPORTANT: regenerate + save so cookie gets set reliably
+    await sessionRegenerate(req);
+    req.session.user = safeUserRowToSessionUser(userRow);
+    await sessionSave(req);
+
+    return res.json({ user: req.session.user });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
-router.post("/logout", (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+/**
+ * POST /api/auth/logout
+ */
+router.post("/logout", async (req, res) => {
+  try {
+    req.session.destroy(() => {
+      // cookie name must match server.js session "name"
+      res.clearCookie("sid");
+      return res.json({ ok: true });
+    });
+  } catch (err) {
+    console.error("LOGOUT ERROR:", err);
+    return res.json({ ok: true });
+  }
 });
 
+/**
+ * GET /api/auth/me
+ */
 router.get("/me", (req, res) => {
-  res.json({ user: req.session.user || null });
+  const user = req.session?.user;
+  if (!user) return res.status(401).json({ error: "Not logged in" });
+  return res.json({ user });
 });
 
 module.exports = router;

@@ -39,6 +39,9 @@ function normalizeQuiz(quiz) {
   return { questions: [] };
 }
 
+function routeParts() { return (location.hash || "#/").replace("#/", "").split("/"); }
+function isVerifyRoute() { return (location.hash || "").startsWith("#/verify/"); }
+
 let state = {
   user: null,
   selectedCourse: "foundation",
@@ -60,17 +63,24 @@ async function loadMe() {
 }
 
 window.addEventListener("hashchange", render);
-function routeParts() { return (location.hash || "#/").replace("#/", "").split("/"); }
 
 async function render() {
   try { await loadMe(); } catch { state.user = null; }
 
-  const [page] = routeParts();
+  const [page, param] = routeParts();
 
+  // ✅ PUBLIC: certificate verification route (NO LOGIN)
+  if (page === "verify") {
+    return renderVerify(param);
+  }
+
+  // 🔒 Everything else requires login
   if (!state.user) {
     setHash("#/login");
     return renderLogin();
   }
+
+  // 🔐 Admin-only pages
   if (state.user.role !== "admin") {
     appEl.innerHTML = `
       <div class="card">
@@ -135,6 +145,57 @@ function renderDashboard() {
         </div>
       </div>
     </div>`;
+}
+
+/* =========================
+   ✅ PUBLIC VERIFY VIEW
+   QR should point to:
+   https://www.riseeritrea.com/#/verify/<token>
+========================= */
+async function renderVerify(token) {
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="h1">Verifying…</div>
+      <p class="p">Please wait.</p>
+    </div>`;
+
+  if (!token) {
+    appEl.innerHTML = `
+      <div class="card">
+        <div class="h1">❌ Invalid link</div>
+        <p class="p">Missing verification token.</p>
+      </div>`;
+    return;
+  }
+
+  try {
+    // IMPORTANT: your backend must have GET /api/verify/:token
+    const r = await api(`/verify/${encodeURIComponent(token)}`);
+
+    if (!r || r.valid === false) {
+      appEl.innerHTML = `
+        <div class="card">
+          <div class="h1">❌ Certificate Invalid</div>
+          <p class="p">This certificate could not be verified.</p>
+        </div>`;
+      return;
+    }
+
+    // Render minimal public info (avoid private data)
+    appEl.innerHTML = `
+      <div class="card">
+        <div class="h1">✅ Certificate Valid</div>
+        <p class="p"><b>Certificate ID:</b> ${escapeHtml(String(r.certificateId ?? token))}</p>
+        ${r.name ? `<p class="p"><b>Name:</b> ${escapeHtml(String(r.name))}</p>` : ""}
+        ${r.issuedOn ? `<p class="p"><b>Issued on:</b> ${escapeHtml(String(r.issuedOn))}</p>` : ""}
+      </div>`;
+  } catch (e) {
+    appEl.innerHTML = `
+      <div class="card">
+        <div class="h1">❌ Verification failed</div>
+        <p class="p">${escapeHtml(e.message)}</p>
+      </div>`;
+  }
 }
 
 async function renderLessons() {
@@ -298,7 +359,6 @@ function renderLessonEditor(lesson) {
   document.getElementById("editCourseKey").value = courseKey;
 
   if (isEdit) {
-    // no hydrate via /lessons needed; editor is full form; keep simple
     document.getElementById("learn_en").value = "";
     document.getElementById("learn_ti").value = "";
     document.getElementById("task_en").value = "";
