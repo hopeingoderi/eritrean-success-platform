@@ -4,66 +4,53 @@ const { query } = require("../db_pg");
 
 const router = express.Router();
 
-/**
- * Safely return a quiz object
- * - DB jsonb often comes back as an object already
- * - but some drivers / older rows might be string
- */
-function quizSafe(v) {
-  if (!v) return { questions: [] };
-  if (typeof v === "object") return v;
-  if (typeof v === "string") {
-    try {
-      return JSON.parse(v);
-    } catch {
-      return { questions: [] };
-    }
-  }
-  return { questions: [] };
-}
-
-/**
- * Safely parse JSON for exam payloads
- */
+/** Safe JSON parse helper */
 function safeJsonParse(val, fallback) {
   try {
     if (!val) return fallback;
-    if (typeof val === "object") return val; // json/jsonb from pg
-    return JSON.parse(val);                  // string
+    if (typeof val === "object") return val; // already JSON (pg jsonb)
+    return JSON.parse(val);
   } catch {
     return fallback;
   }
 }
 
+/** Quiz always returns { questions: [] } shape */
+function quizSafe(v) {
+  return safeJsonParse(v, { questions: [] });
+}
+
+/** Exam always returns { questions: [] } shape */
+function examSafe(v) {
+  return safeJsonParse(v, { questions: [] });
+}
+
 /**
- * Admin guard:
- * - works with either {isAdmin:true} OR {role:"admin"}
+ * Admin guard
+ * Works with BOTH session formats:
+ *  - { role: "admin" }
+ *  - { isAdmin: true }
  */
 function requireAdmin(req, res, next) {
   const u = req.session?.user;
-
   if (!u) return res.status(401).json({ error: "Not logged in" });
 
-  const isAdmin =
-    u.isAdmin === true || String(u.role || "").toLowerCase() === "admin";
+  const role = String(u.role || "").toLowerCase();
+  const isAdmin = u.isAdmin === true || role === "admin";
 
   if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-
   next();
 }
 
-/* =========================================================
-   LESSONS
-   ========================================================= */
-
+// -------------------- LESSONS --------------------
 // GET /api/admin/lessons/:courseId
 router.get("/lessons/:courseId", requireAdmin, async (req, res) => {
   const courseId = String(req.params.courseId || "").trim();
 
   try {
     const r = await query(
-      `SELECT id, course_id, lesson_index, title_en, title_ti,
-              learn_en, learn_ti, task_en, task_ti, quiz
+      `SELECT id, course_id, lesson_index,
+              title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz
        FROM lessons
        WHERE course_id=$1
        ORDER BY lesson_index ASC`,
@@ -96,8 +83,8 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
     const b = req.body || {};
     const id = b.id ? Number(b.id) : null;
 
-    const courseId = String(b.courseId || "").trim();
-    const lessonIndex = Number(b.lessonIndex);
+    const courseId = String(b.courseId || b.course_id || "").trim();
+    const lessonIndex = Number(b.lessonIndex ?? b.lesson_index);
 
     const title_en = String(b.title_en || "").trim();
     const title_ti = String(b.title_ti || "").trim();
@@ -105,12 +92,10 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
     const learn_ti = String(b.learn_ti || "").trim();
     const task_en = String(b.task_en || "").trim();
     const task_ti = String(b.task_ti || "").trim();
-
     const quiz = quizSafe(b.quiz);
 
     if (!courseId) return res.status(400).json({ error: "courseId required" });
-    if (!Number.isInteger(lessonIndex))
-      return res.status(400).json({ error: "lessonIndex invalid" });
+    if (!Number.isInteger(lessonIndex)) return res.status(400).json({ error: "lessonIndex invalid" });
 
     if (!title_en || !title_ti || !learn_en || !learn_ti || !task_en || !task_ti) {
       return res.status(400).json({ error: "All text fields are required" });
@@ -119,8 +104,10 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
     if (id) {
       await query(
         `UPDATE lessons
-         SET course_id=$1, lesson_index=$2, title_en=$3, title_ti=$4,
-             learn_en=$5, learn_ti=$6, task_en=$7, task_ti=$8,
+         SET course_id=$1, lesson_index=$2,
+             title_en=$3, title_ti=$4,
+             learn_en=$5, learn_ti=$6,
+             task_en=$7, task_ti=$8,
              quiz=$9::jsonb
          WHERE id=$10`,
         [
@@ -167,7 +154,7 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
 router.delete("/lesson/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid id" });
 
     await query("DELETE FROM lessons WHERE id=$1", [id]);
     return res.json({ ok: true });
@@ -177,10 +164,7 @@ router.delete("/lesson/:id", requireAdmin, async (req, res) => {
   }
 });
 
-/* =========================================================
-   EXAMS
-   ========================================================= */
-
+// -------------------- EXAMS --------------------
 // GET /api/admin/exam/:courseId
 router.get("/exam/:courseId", requireAdmin, async (req, res) => {
   const courseId = String(req.params.courseId || "").trim();
@@ -193,33 +177,23 @@ router.get("/exam/:courseId", requireAdmin, async (req, res) => {
       [courseId]
     );
 
-    // If not found, return defaults (so UI doesn't crash)
     if (!r.rows.length) {
-      const exam_en = { questions: [] };
-      const exam_ti = { questions: [] };
+      // return defaults so UI can still work
       return res.json({
         courseId,
         passScore: 70,
-        exam_en,
-        exam_ti,
-        // extra fields: useful if UI expects strings
-        exam_en_text: JSON.stringify(exam_en, null, 2),
-        exam_ti_text: JSON.stringify(exam_ti, null, 2),
+        exam_en: { questions: [] },
+        exam_ti: { questions: [] },
       });
     }
 
     const row = r.rows[0];
-    const exam_en = safeJsonParse(row.exam_json_en, { questions: [] });
-    const exam_ti = safeJsonParse(row.exam_json_ti, { questions: [] });
 
     return res.json({
       courseId: row.course_id,
       passScore: Number(row.pass_score ?? 70),
-      exam_en,
-      exam_ti,
-      // extra fields: useful if UI expects strings
-      exam_en_text: JSON.stringify(exam_en, null, 2),
-      exam_ti_text: JSON.stringify(exam_ti, null, 2),
+      exam_en: examSafe(row.exam_json_en),
+      exam_ti: examSafe(row.exam_json_ti),
     });
   } catch (e) {
     console.error("ADMIN exam load error:", e);
@@ -227,19 +201,16 @@ router.get("/exam/:courseId", requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/admin/exam/save
-// body: { courseId, passScore, exam_en, exam_ti }
-router.post("/exam/save", requireAdmin, async (req, res) => {
+// POST /api/admin/exam/:courseId
+router.post("/exam/:courseId", requireAdmin, async (req, res) => {
+  const courseId = String(req.params.courseId || "").trim();
+
   try {
-    const b = req.body || {};
-    const courseId = String(b.courseId || "").trim();
-    const passScore = Number(b.passScore);
+    const passScore = Number(req.body?.passScore ?? req.body?.pass_score ?? 70);
 
-    if (!courseId) return res.status(400).json({ error: "courseId required" });
-    if (!Number.isFinite(passScore)) return res.status(400).json({ error: "passScore invalid" });
-
-    const exam_en = safeJsonParse(b.exam_en, { questions: [] });
-    const exam_ti = safeJsonParse(b.exam_ti, { questions: [] });
+    // accept either string JSON or object
+    const exam_en = examSafe(req.body?.exam_en ?? req.body?.exam_json_en);
+    const exam_ti = examSafe(req.body?.exam_ti ?? req.body?.exam_json_ti);
 
     await query(
       `INSERT INTO exam_defs (course_id, pass_score, exam_json_en, exam_json_ti)
