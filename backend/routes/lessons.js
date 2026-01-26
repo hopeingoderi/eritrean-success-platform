@@ -1,36 +1,36 @@
 // backend/routes/lessons.js
+//
+// STUDENT/PUBLIC endpoints only (admin stays in backend/routes/admin.js)
+//
+// Mounted in server.js as:
+//   app.use("/api/lessons", require("./routes/lessons"));
+//
+// So routes here become:
+//   GET /api/lessons/:courseId?lang=en|ti
+//
+// Response shape for student UI:
+//   { lessons: [ { id, lessonIndex, title, learn } ] }
+
 const express = require("express");
 const { query } = require("../db_pg");
 
 const router = express.Router();
 
-/** Never crash on quiz parsing */
-function quizSafe(v) {
-  if (!v) return { questions: [] };
-  if (typeof v === "object") return v; // pg jsonb often returns object
-  if (typeof v === "string") {
-    try {
-      const parsed = JSON.parse(v);
-      return parsed && typeof parsed === "object" ? parsed : { questions: [] };
-    } catch {
-      return { questions: [] };
-    }
-  }
-  return { questions: [] };
-}
-
 /**
- * STUDENT/PUBLIC
- * GET /api/lessons/:courseId
+ * GET /api/lessons/:courseId?lang=en|ti
+ * Student-facing: returns minimal fields the student UI expects:
+ *   id, lessonIndex, title, learn
  */
 router.get("/:courseId", async (req, res) => {
   try {
     const courseId = String(req.params.courseId || "").trim();
     if (!courseId) return res.status(400).json({ error: "Missing courseId" });
 
+    // default to English unless explicitly "ti"
+    const lang = String(req.query.lang || "en").toLowerCase() === "ti" ? "ti" : "en";
+
     const r = await query(
-      `SELECT id, course_id, lesson_index,
-              title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz
+      `SELECT id, lesson_index, title_en, title_ti, learn_en, learn_ti
        FROM lessons
        WHERE course_id=$1
        ORDER BY lesson_index ASC`,
@@ -39,15 +39,9 @@ router.get("/:courseId", async (req, res) => {
 
     const lessons = r.rows.map((row) => ({
       id: row.id,
-      course_id: row.course_id,
-      lesson_index: row.lesson_index,
-      title_en: row.title_en,
-      title_ti: row.title_ti,
-      learn_en: row.learn_en,
-      learn_ti: row.learn_ti,
-      task_en: row.task_en,
-      task_ti: row.task_ti,
-      quiz: quizSafe(row.quiz),
+      lessonIndex: Number(row.lesson_index),
+      title: lang === "ti" ? (row.title_ti || "") : (row.title_en || ""),
+      learn: lang === "ti" ? (row.learn_ti || "") : (row.learn_en || ""),
     }));
 
     return res.json({ lessons });
