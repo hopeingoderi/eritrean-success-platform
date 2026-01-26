@@ -5,25 +5,31 @@ const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
-function safeQuiz(value) {
-  // DB column is jsonb => usually object or null
-  if (value == null) return { questions: [] };
+function safeParseJson(value) {
+  if (value == null) return null;
 
-  // If somehow a string got stored/returned, guard it
+  // If DB contains string versions like "undefined", "", "null"
   if (typeof value === "string") {
-    const s = value.trim();
-    if (!s || s.toLowerCase() === "undefined" || s.toLowerCase() === "null") {
-      return { questions: [] };
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.toLowerCase() === "undefined" || trimmed.toLowerCase() === "null") {
+      return null;
     }
     try {
-      const parsed = JSON.parse(s);
-      return parsed && typeof parsed === "object" ? parsed : { questions: [] };
+      return JSON.parse(trimmed);
     } catch {
-      return { questions: [] };
+      return null;
     }
   }
 
+  // If it's already json/jsonb object
   if (typeof value === "object") return value;
+
+  return null;
+}
+
+function safeQuiz(value) {
+  const parsed = safeParseJson(value);
+  if (parsed && typeof parsed === "object") return parsed;
   return { questions: [] };
 }
 
@@ -35,16 +41,11 @@ router.get("/:courseId", requireAuth, async (req, res) => {
     const { courseId } = req.params;
     const lang = req.query.lang === "ti" ? "ti" : "en";
 
-    // IMPORTANT: your DB column is quiz (jsonb)
+    // IMPORTANT: your DB column is "quiz" (jsonb)
     const r = await query(
-      `SELECT
-         lesson_index,
-         title_en, title_ti,
-         learn_en, learn_ti,
-         task_en, task_ti,
-         quiz
+      `SELECT lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz
        FROM lessons
-       WHERE course_id = $1
+       WHERE course_id=$1
        ORDER BY lesson_index`,
       [courseId]
     );
