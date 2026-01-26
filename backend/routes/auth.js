@@ -11,7 +11,7 @@
 //   GET  /api/auth/me
 //
 // Response shape:
-//   { user: { id, name, email, isAdmin } }
+//   { user: { id, name, email, role, isAdmin } }
 
 const express = require("express");
 const bcrypt = require("bcryptjs");
@@ -30,15 +30,20 @@ function isValidEmail(email) {
   return e.includes("@") && e.split("@")[1]?.includes(".");
 }
 
+/**
+ * Convert DB row -> session user object
+ * IMPORTANT: include `role` (frontend uses role === "admin")
+ */
 function safeUserRowToSessionUser(row) {
-  const role = String(row?.role || "").toLowerCase();
+  const role = String(row?.role || "student").toLowerCase();
   const isAdmin = role === "admin";
 
   return {
     id: row.id,
     name: row.name || "",
     email: row.email || "",
-    isAdmin
+    role,      // ✅ REQUIRED by frontend
+    isAdmin    // optional, but harmless
   };
 }
 
@@ -76,8 +81,6 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Your table columns: name, email, password_hash, role
-    // Default role is "student" (change if you want)
     const ins = await query(
       `INSERT INTO users (name, email, password_hash, role)
        VALUES ($1, $2, $3, $4)
@@ -87,7 +90,6 @@ router.post("/register", async (req, res) => {
 
     const userRow = ins.rows[0];
 
-    // IMPORTANT: regenerate + save so cookie gets set reliably
     await sessionRegenerate(req);
     req.session.user = safeUserRowToSessionUser(userRow);
     await sessionSave(req);
@@ -128,7 +130,6 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // IMPORTANT: regenerate + save so cookie gets set reliably
     await sessionRegenerate(req);
     req.session.user = safeUserRowToSessionUser(userRow);
     await sessionSave(req);
@@ -146,7 +147,6 @@ router.post("/login", async (req, res) => {
 router.post("/logout", async (req, res) => {
   try {
     req.session.destroy(() => {
-      // cookie name must match server.js session "name"
       res.clearCookie("sid");
       return res.json({ ok: true });
     });
@@ -158,10 +158,11 @@ router.post("/logout", async (req, res) => {
 
 /**
  * GET /api/auth/me
+ * ✅ Return { user: null } if not logged in (better for your frontend)
  */
 router.get("/me", (req, res) => {
   const user = req.session?.user;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
+  if (!user) return res.json({ user: null });
   return res.json({ user });
 });
 
