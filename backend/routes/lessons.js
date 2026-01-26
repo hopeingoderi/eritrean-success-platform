@@ -6,54 +6,38 @@ const requireAdmin = require("../middleware/requireAdmin");
 
 const router = express.Router();
 
-/**
- * Always return a safe quiz object.
- */
-function quizSafe(q) {
-  if (q && typeof q === "object" && !Array.isArray(q)) {
-    return { questions: Array.isArray(q.questions) ? q.questions : [] };
+const EMPTY_QUIZ = { questions: [] };
+
+function safeQuizObj(v) {
+  if (!v) return EMPTY_QUIZ;
+  if (typeof v === "object") return v;
+
+  // If it's a string, try parse safely
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s || s === "undefined" || s === "null") return EMPTY_QUIZ;
+    try {
+      const parsed = JSON.parse(s);
+      return parsed && typeof parsed === "object" ? parsed : EMPTY_QUIZ;
+    } catch {
+      return EMPTY_QUIZ;
+    }
   }
-  return { questions: [] };
+
+  return EMPTY_QUIZ;
 }
 
-/**
- * Safely parse JSON from TEXT columns.
- */
-function safeJsonParse(str) {
-  if (!str || typeof str !== "string") return { questions: [] };
-  try {
-    const parsed = JSON.parse(str);
-    return quizSafe(parsed);
-  } catch {
-    return { questions: [] };
-  }
-}
-
-/**
- * Detect whether lessons table uses `quiz` (jsonb) or `quiz_json` (text).
- * Cached after first call.
- */
-let quizColumnPromise = null;
-
-async function getQuizColumnInfo() {
-  if (!quizColumnPromise) {
-    quizColumnPromise = query(
-      `
-      SELECT column_name, data_type, udt_name
-      FROM information_schema.columns
-      WHERE table_schema='public'
-        AND table_name='lessons'
-        AND column_name IN ('quiz', 'quiz_json')
-      `
-    );
-  }
-  const r = await quizColumnPromise;
-  const cols = r.rows.map((x) => x.column_name);
-
-  return {
-    hasQuizJsonb: cols.includes("quiz"),
-    hasQuizText: cols.includes("quiz_json"),
-  };
+async function hasColumn(table, column) {
+  const r = await query(
+    `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name=$1 AND column_name=$2
+    LIMIT 1
+    `,
+    [table, column]
+  );
+  return r.rows.length > 0;
 }
 
 /* ================= STUDENT LESSONS =================
@@ -64,75 +48,58 @@ router.get("/:courseId", requireAuth, async (req, res) => {
     const { courseId } = req.params;
     const lang = req.query.lang === "ti" ? "ti" : "en";
 
-    const { hasQuizJsonb, hasQuizText } = await getQuizColumnInfo();
+    // Detect which column exists in THIS database: quiz (jsonb) OR quiz_json (text)
+    const hasQuizJsonb = await hasColumn("lessons", "quiz");
+    const hasQuizText = await hasColumn("lessons", "quiz_json");
 
-    // Build SELECT depending on DB schema
-    let sql;
+    let quizSelect = `'{"questions":[]}'::jsonb AS quiz`;
+
     if (hasQuizJsonb) {
-      sql = `
-        SELECT
-          lesson_index,
-          title_${lang} AS title,
-          learn_${lang} AS "learnText",
-          task_${lang} AS task,
-          COALESCE(quiz, '{"questions":[]}'::jsonb) AS quiz
-        FROM lessons
-        WHERE course_id = $1
-        ORDER BY lesson_index
-      `;
+      // quiz is jsonb already
+      quizSelect = `COALESCE(quiz, '{"questions":[]}'::jsonb) AS quiz`;
     } else if (hasQuizText) {
-      sql = `
-        SELECT
-          lesson_index,
-          title_${lang} AS title,
-          learn_${lang} AS "learnText",
-          task_${lang} AS task,
-          quiz_json
-        FROM lessons
-        WHERE course_id = $1
-        ORDER BY lesson_index
-      `;
-    } else {
-      // No quiz column found at all
-      sql = `
-        SELECT
-          lesson_index,
-          title_${lang} AS title,
-          learn_${lang} AS "learnText",
-          task_${lang} AS task
-        FROM lessons
-        WHERE course_id = $1
-        ORDER BY lesson_index
+      // quiz_json is TEXT, may contain invalid strings like "undefined"
+      quizSelect = `
+        CASE
+          WHEN quiz_json IS NULL OR btrim(quiz_json) = '' OR btrim(quiz_json) IN ('undefined','null')
+            THEN '{"questions":[]}'::jsonb
+          ELSE quiz_json::jsonb
+        END AS quiz
       `;
     }
 
-    const r = await query(sql, [courseId]);
+    const r = await query(
+      `
+      SELECT
+        lesson_index,
+        title_${lang} AS title,
+        learn_${lang} AS "learnText",
+        task_${lang} AS task,
+        ${quizSelect}
+      FROM lessons
+      WHERE course_id=$1
+      ORDER BY lesson_index
+      `,
+      [courseId]
+    );
 
-    const lessons = r.rows.map((row) => {
-      const quiz =
-        hasQuizJsonb ? quizSafe(row.quiz)
-        : hasQuizText ? safeJsonParse(row.quiz_json)
-        : { questions: [] };
+    const lessons = r.rows.map((row) => ({
+      lessonIndex: row.lesson_index,
+      title: row.title || "",
+      learnText: row.learnText || "",
+      task: row.task || "",
+      quiz: safeQuizObj(row.quiz),
+    }));
 
-      return {
-        lessonIndex: row.lesson_index,
-        title: row.title,
-        learnText: row.learnText,
-        task: row.task,
-        quiz,
-      };
-    });
-
-    return res.json({ courseId, lessons });
+    res.json({ courseId, lessons });
   } catch (err) {
-    console.error("LESSONS ERROR:", err);
-    return res.status(500).json({ error: "Failed to load lessons" });
+    console.error("STUDENT LESSONS ERROR:", err);
+    res.status(500).json({ error: "Failed to load lessons" });
   }
 });
 
 /* ================= ADMIN SAVE LESSON =================
    POST /api/lessons/lesson/save
-   (If you still use this route. Otherwise your admin routes may be /api/admin/lesson/save)
 */
 router.post("/lesson/save", requireAdmin, async (req, res) => {
   try {
@@ -149,12 +116,20 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
       quiz,
     } = req.body;
 
-    if (!courseId || lessonIndex === undefined || lessonIndex === null) {
+    if (!courseId || lessonIndex === undefined) {
       return res.status(400).json({ error: "Missing courseId or lessonIndex" });
     }
 
-    const q = quizSafe(quiz);
-    const { hasQuizJsonb, hasQuizText } = await getQuizColumnInfo();
+    const q = safeQuizObj(quiz);
+
+    const hasQuizJsonb = await hasColumn("lessons", "quiz");
+    const hasQuizText = await hasColumn("lessons", "quiz_json");
+
+    if (!hasQuizJsonb && !hasQuizText) {
+      return res.status(500).json({
+        error: "DB schema error: lessons table has no quiz or quiz_json column",
+      });
+    }
 
     if (id) {
       if (hasQuizJsonb) {
@@ -172,9 +147,20 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
             quiz=$9
           WHERE id=$10
           `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, q, id]
+          [
+            courseId,
+            lessonIndex,
+            title_en || "",
+            title_ti || "",
+            learn_en || "",
+            learn_ti || "",
+            task_en || "",
+            task_ti || "",
+            q,
+            id,
+          ]
         );
-      } else if (hasQuizText) {
+      } else {
         await query(
           `
           UPDATE lessons SET
@@ -189,23 +175,18 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
             quiz_json=$9
           WHERE id=$10
           `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, JSON.stringify(q), id]
-        );
-      } else {
-        await query(
-          `
-          UPDATE lessons SET
-            course_id=$1,
-            lesson_index=$2,
-            title_en=$3,
-            title_ti=$4,
-            learn_en=$5,
-            learn_ti=$6,
-            task_en=$7,
-            task_ti=$8
-          WHERE id=$9
-          `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, id]
+          [
+            courseId,
+            lessonIndex,
+            title_en || "",
+            title_ti || "",
+            learn_en || "",
+            learn_ti || "",
+            task_en || "",
+            task_ti || "",
+            JSON.stringify(q),
+            id,
+          ]
         );
       }
     } else {
@@ -216,33 +197,44 @@ router.post("/lesson/save", requireAdmin, async (req, res) => {
             (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
           `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, q]
+          [
+            courseId,
+            lessonIndex,
+            title_en || "",
+            title_ti || "",
+            learn_en || "",
+            learn_ti || "",
+            task_en || "",
+            task_ti || "",
+            q,
+          ]
         );
-      } else if (hasQuizText) {
+      } else {
         await query(
           `
           INSERT INTO lessons
             (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz_json)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
           `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, JSON.stringify(q)]
-        );
-      } else {
-        await query(
-          `
-          INSERT INTO lessons
-            (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-          `,
-          [courseId, lessonIndex, title_en, title_ti, learn_en, learn_ti, task_en, task_ti]
+          [
+            courseId,
+            lessonIndex,
+            title_en || "",
+            title_ti || "",
+            learn_en || "",
+            learn_ti || "",
+            task_en || "",
+            task_ti || "",
+            JSON.stringify(q),
+          ]
         );
       }
     }
 
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (err) {
     console.error("SAVE LESSON ERROR:", err);
-    return res.status(500).json({ error: "Failed to save lesson" });
+    res.status(500).json({ error: "Failed to save lesson" });
   }
 });
 
