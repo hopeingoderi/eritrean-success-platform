@@ -21,8 +21,8 @@ async function upsertCourse(c){
 
 async function upsertLesson(l){
   await query(
-    `INSERT INTO lessons (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz_json)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO lessons (course_id, lesson_index, title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
      ON CONFLICT (course_id, lesson_index) DO UPDATE SET
        title_en=EXCLUDED.title_en,
        title_ti=EXCLUDED.title_ti,
@@ -30,8 +30,18 @@ async function upsertLesson(l){
        learn_ti=EXCLUDED.learn_ti,
        task_en=EXCLUDED.task_en,
        task_ti=EXCLUDED.task_ti,
-       quiz_json=EXCLUDED.quiz_json`,
-    [l.course_id, l.lesson_index, l.title_en, l.title_ti, l.learn_en, l.learn_ti, l.task_en, l.task_ti, l.quiz_json]
+       quiz=EXCLUDED.quiz`,
+    [
+      l.course_id,
+      l.lesson_index,
+      l.title_en,
+      l.title_ti,
+      l.learn_en,
+      l.learn_ti,
+      l.task_en,
+      l.task_ti,
+      JSON.stringify(l.quiz) // 👈 ensure jsonb
+    ]
   );
 }
 
@@ -87,7 +97,7 @@ function makeLesson(course_id, lesson_index, title_en, learn_en, task_en, questi
     learn_ti: `TI: ${learn_en}`,
     task_en,
     task_ti: `TI: ${task_en}`,
-    quiz_json: JSON.stringify(quiz(questions))
+    quiz: quiz(questions) // ✅ object, not string
   };
 }
 
