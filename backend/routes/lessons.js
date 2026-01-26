@@ -4,61 +4,56 @@ const { query } = require("../db_pg");
 
 const router = express.Router();
 
+/** Never crash on quiz parsing */
 function quizSafe(v) {
   if (!v) return { questions: [] };
-  if (typeof v === "object") return v;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return { questions: [] };
+  if (typeof v === "object") return v; // pg jsonb often returns object
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return parsed && typeof parsed === "object" ? parsed : { questions: [] };
+    } catch {
+      return { questions: [] };
+    }
   }
+  return { questions: [] };
 }
 
 /**
- * STUDENT ONLY
- * GET /api/lessons/:courseId?lang=en|ti
+ * STUDENT/PUBLIC
+ * GET /api/lessons/:courseId
  */
 router.get("/:courseId", async (req, res) => {
   try {
     const courseId = String(req.params.courseId || "").trim();
-    if (!courseId) {
-      return res.status(400).json({ error: "Missing courseId" });
-    }
-
-    const lang = String(req.query.lang || "en").toLowerCase();
-    const useTi = lang === "ti" || lang === "tg";
+    if (!courseId) return res.status(400).json({ error: "Missing courseId" });
 
     const r = await query(
       `SELECT id, course_id, lesson_index,
-              title_en, title_ti,
-              learn_en, learn_ti,
-              task_en, task_ti,
-              quiz
+              title_en, title_ti, learn_en, learn_ti, task_en, task_ti, quiz
        FROM lessons
        WHERE course_id=$1
-       ORDER BY lesson_index ASC, id ASC`,
+       ORDER BY lesson_index ASC`,
       [courseId]
     );
 
     const lessons = r.rows.map((row) => ({
       id: row.id,
-      courseId: row.course_id,
-
-      // ✅ THIS FIXES NaN
-      lessonIndex: Number(row.lesson_index),
-
-      // ✅ language-aware fields
-      title: useTi ? row.title_ti : row.title_en,
-      learn: useTi ? row.learn_ti : row.learn_en,
-      task: useTi ? row.task_ti : row.task_en,
-
+      course_id: row.course_id,
+      lesson_index: row.lesson_index,
+      title_en: row.title_en,
+      title_ti: row.title_ti,
+      learn_en: row.learn_en,
+      learn_ti: row.learn_ti,
+      task_en: row.task_en,
+      task_ti: row.task_ti,
       quiz: quizSafe(row.quiz),
     }));
 
     return res.json({ lessons });
-  } catch (err) {
-    console.error("STUDENT lessons error:", err);
-    return res.status(500).json({ error: "Failed to load lessons" });
+  } catch (e) {
+    console.error("GET /api/lessons/:courseId error:", e);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
