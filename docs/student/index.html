@@ -1,40 +1,128 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Eritrean Success Journey</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8" />
+  <title>Eritrean Success Journey – Student</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #0b132b, #1c2541);
+      color: #fff;
+    }
+
+    header {
+      background: rgba(0,0,0,.3);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header .title {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    header button {
+      background: #5bc0be;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #nav button {
+      margin-left: 6px;
+    }
+
+    #app {
+      padding: 16px;
+      max-width: 900px;
+      margin: auto;
+    }
+
+    .card {
+      background: rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .h1 { font-size: 22px; font-weight: 700; }
+    .h2 { font-size: 18px; font-weight: 600; }
+    .p  { opacity: .9; }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      background: rgba(255,255,255,.15);
+      color: #fff;
+    }
+
+    .btn.primary { background: #5bc0be; color: #000; }
+    .btn.secondary { background: #3a86ff; }
+
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      border-radius: 10px;
+      border: none;
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    .progressWrap {
+      background: rgba(255,255,255,.15);
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .progressBar {
+      height: 100%;
+      background: #5bc0be;
+    }
+
+    .small { font-size: 13px; opacity: .85; }
+
+    footer {
+      text-align: center;
+      opacity: .6;
+      font-size: 12px;
+      padding: 14px;
+    }
+  </style>
 </head>
 
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">ER</div>
-      <div>
-        <h1>Eritrean Success Journey</h1>
-        <p>Learn • Grow • Believe • Succeed</p>
-      </div>
+  <header>
+    <div class="title">Learn • Grow • Believe • Succeed</div>
+    <div id="nav">
+      <button onclick="go('login')">Login</button>
+      <button onclick="go('register')">Register</button>
+      <button onclick="logout()">Logout</button>
     </div>
-
-    <nav id="nav" class="nav">
-      <button class="btn" onclick="go('login')">Login</button>
-      <button class="btn" onclick="go('register')">Register</button>
-      <button class="btn danger" onclick="logout()">Logout</button>
-    </nav>
   </header>
 
-  <main class="container">
-    <div id="app"><!-- SPA renders here --></div>
-  </main>
+  <main id="app"></main>
 
-  <footer class="footer">
-    © <span id="year"></span> Eritrean Success Journey
-  </footer>
+  <footer>© 2026 Eritrean Success Journey</footer>
 
-  <script>
-    document.getElementById("year").textContent = new Date().getFullYear();
-  </script>
   <script src="./app.js"></script>
 </body>
 </html>
