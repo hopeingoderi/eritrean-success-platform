@@ -74,6 +74,13 @@ if (PgSession && process.env.DATABASE_URL) {
 
 app.use(session(sessionOptions));
 
+// ---- Language middleware (EN/TI) ----
+app.use((req, res, next) => {
+  const q = String(req.query.lang || "").toLowerCase();
+  req.lang = (q === "ti" || q === "en") ? q : "en"; // default en
+  next();
+});
+
 // ---------- ROUTES ----------
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
