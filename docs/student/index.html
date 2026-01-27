@@ -1,40 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Eritrean Success Journey – Student</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Eritrean Success Journey</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-
-<header class="topbar">
-  <div class="brand">
-    <div class="logo">🇪🇷</div>
-    <div>
-      <h1>Eritrean Success Journey</h1>
-      <p>Learn • Grow • Believe • Succeed</p>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">ER</div>
+      <div>
+        <h1>Eritrean Success Journey</h1>
+        <p>Learn • Grow • Believe • Succeed</p>
+      </div>
     </div>
-  </div>
-</header>
 
-<nav id="nav" class="nav">
-  <button class="btn" onclick="go('login')">Login</button>
-  <button class="btn" onclick="go('register')">Register</button>
-  <button class="btn danger" onclick="logout()">Logout</button>
-</nav>
+    <nav id="nav" class="nav">
+      <button class="btn" onclick="go('login')">Login</button>
+      <button class="btn" onclick="go('register')">Register</button>
+      <button class="btn danger" onclick="logout()">Logout</button>
+    </nav>
+  </header>
 
-<main class="container">
-  <div id="app"><!-- SPA renders here --></div>
-</main>
+  <main class="container">
+    <div id="app"><!-- SPA renders here --></div>
+  </main>
 
-<footer class="footer">
-  © <span id="year"></span> Eritrean Success Journey
-</footer>
+  <footer class="footer">
+    © <span id="year"></span> Eritrean Success Journey
+  </footer>
 
-<script>
-  document.getElementById("year").textContent = new Date().getFullYear();
-</script>
-<script src="./app.js"></script>
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
