@@ -1,6 +1,6 @@
 // docs/student/app.js
 // Student SPA (docs/student)
-// Works with your backend routes:
+// Backend routes used:
 // - /api/auth/*
 // - /api/courses
 // - /api/lessons/:courseId
@@ -13,51 +13,60 @@
 // - /api/certificates/claim (POST)      body: { courseId }
 // - /api/certificates/:courseId/pdf (GET)
 
-// ✅ PRODUCTION (uncomment when deploying)
-// const API_BASE = "https://api.riseeritrea.com/api";
-
-// ✅ LOCAL DEV
-// const API_BASE = "http://localhost:4000/api";
-// ✅ Auto API base (local vs production)
-const API_BASE = (() => {
-  const host = window.location.hostname;
-
-  // If you open the student app on GitHub Pages (riseeritrea.com), use production API
-  if (host === "riseeritrea.com" || host === "www.riseeritrea.com") {
-    return "https://api.riseeritrea.com/api";
-  }
-
-  // If you run locally (localhost / 127.0.0.1), use local backend
-  return "http://localhost:4000/api";
-})();
-
 const appEl = document.getElementById("app");
 const navEl = document.getElementById("nav");
-
-// ---------------- STATE ----------------
-const state = {
-  user: null,
-  lang: "en", // "en" | "ti"
-  courses: [],
-  lessonsByCourse: {},    // courseId -> lessons[]
-  progressByCourse: {},   // courseId -> progress object
-  examStatusByCourse: {}  // courseId -> { passed, score }
-};
 
 // ---------------- HELPERS ----------------
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
   }[m]));
 }
 
+// ---- language memory ----
+function getLang() {
+  const saved = localStorage.getItem("lang");
+  return (saved === "ti" || saved === "en") ? saved : "en";
+}
+function setLang(lang) {
+  const v = (lang === "ti" || lang === "en") ? lang : "en";
+  localStorage.setItem("lang", v);
+  state.lang = v; // keep state synced
+  return v;
+}
+
+// ---- API base (auto local vs production) ----
+const API_BASE = (() => {
+  const host = window.location.hostname;
+  if (host === "riseeritrea.com" || host === "www.riseeritrea.com") {
+    return "https://api.riseeritrea.com/api";
+  }
+  return "http://localhost:4000/api";
+})();
+
+// ---- always add ?lang= ----
+function withLang(url) {
+  const lang = getLang();
+  return url.includes("?")
+    ? `${url}&lang=${encodeURIComponent(lang)}`
+    : `${url}?lang=${encodeURIComponent(lang)}`;
+}
+
+// ---- single API client ----
 async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(API_BASE + path, {
+  const url = withLang(API_BASE + path);
+
+  const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
   });
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Request failed");
   return data;
@@ -65,6 +74,17 @@ async function api(path, { method = "GET", body } = {}) {
 
 function setHash(h) { if (location.hash !== h) location.hash = h; }
 function routeParts() { return (location.hash || "#/dashboard").replace("#/", "").split("/"); }
+
+// ---------------- STATE ----------------
+const state = {
+  user: null,
+  lang: getLang(), // ✅ from localStorage
+  courses: [],
+  lessonsByCourse: {},    // courseId -> lessons[]
+  progressByCourse: {},   // courseId -> progress object
+  examStatusByCourse: {}  // courseId -> { passed, score }
+};
+
 function isLoggedIn() { return !!state.user; }
 
 function courseFallbackOrder(courseId) {
@@ -72,12 +92,10 @@ function courseFallbackOrder(courseId) {
 }
 
 function courseTitle(c) {
-  // backend/courses.js returns { title, intro } not title_en/title_ti
   return c?.title || c?.title_en || c?.title_ti || c?.id || "";
 }
 
 function courseDesc(c) {
-  // backend/courses.js returns { title, intro }
   return c?.intro || c?.intro_en || c?.intro_ti || "";
 }
 
@@ -128,10 +146,9 @@ window.go = function (page) {
 
 // ---------------- LOADERS ----------------
 async function loadCourses() {
-  const r = await api(`/courses?lang=${state.lang}`);
+  const r = await api(`/courses`);
   state.courses = Array.isArray(r.courses) ? r.courses : [];
 
-  // Courses route currently orders by id, but keep stable fallback ordering anyway
   state.courses.sort((a, b) => {
     const ao = courseFallbackOrder(a.id);
     const bo = courseFallbackOrder(b.id);
@@ -140,7 +157,7 @@ async function loadCourses() {
 }
 
 async function loadLessons(courseId) {
-  const r = await api(`/lessons/${courseId}?lang=${state.lang}`);
+  const r = await api(`/lessons/${courseId}`);
   state.lessonsByCourse[courseId] = Array.isArray(r.lessons) ? r.lessons : [];
 }
 
@@ -284,12 +301,12 @@ async function renderDashboard() {
   `;
 
   document.getElementById("langEn").onclick = async () => {
-    state.lang = "en";
+    setLang("en");
     await loadCourses();
     renderDashboard();
   };
   document.getElementById("langTi").onclick = async () => {
-    state.lang = "ti";
+    setLang("ti");
     await loadCourses();
     renderDashboard();
   };
@@ -400,17 +417,18 @@ async function renderCourse(courseId) {
 
   const listHtml = lessons
     .slice()
-    .sort((a, b) => a.lessonIndex - b.lessonIndex)
+    .sort((a, b) => (a.lessonIndex ?? 0) - (b.lessonIndex ?? 0))
     .map(l => {
-      const done = !!pmap[l.lessonIndex]?.completed;
+      const idx = Number(l.lessonIndex ?? 0);
+      const done = !!pmap[idx]?.completed;
       return `
         <div class="card">
           <div class="row" style="justify-content:space-between;">
             <div>
               <div class="h2">${escapeHtml(l.title || "")}</div>
-              <div class="small">Lesson ${l.lessonIndex + 1} ${done ? "✅ Completed" : ""}</div>
+              <div class="small">Lesson ${idx + 1} ${done ? "✅ Completed" : ""}</div>
             </div>
-            <button class="btn primary" data-open-lesson="${l.lessonIndex}">Open</button>
+            <button class="btn primary" data-open-lesson="${idx}">Open</button>
           </div>
         </div>
       `;
@@ -454,7 +472,7 @@ async function renderLesson(courseId, lessonIndexStr) {
   }
 
   const lessons = state.lessonsByCourse[courseId] || [];
-  const lesson = lessons.find(x => x.lessonIndex === lessonIndex);
+  const lesson = lessons.find(x => Number(x.lessonIndex) === lessonIndex);
 
   if (!lesson) {
     document.getElementById("lessonCard").innerHTML = `<div class="small">Lesson not found.</div>`;
@@ -473,8 +491,8 @@ async function renderLesson(courseId, lessonIndexStr) {
   `;
 
   const p = progressFor(courseId, lessonIndex);
-  const prevExists = lessons.some(x => x.lessonIndex === lessonIndex - 1);
-  const nextExists = lessons.some(x => x.lessonIndex === lessonIndex + 1);
+  const prevExists = lessons.some(x => Number(x.lessonIndex) === lessonIndex - 1);
+  const nextExists = lessons.some(x => Number(x.lessonIndex) === lessonIndex + 1);
 
   document.getElementById("lessonCard").innerHTML = `
     <div class="h2">${escapeHtml(lesson.title || "")}</div>
@@ -571,7 +589,7 @@ async function renderExam(courseId) {
 
   let examData;
   try {
-    examData = await api(`/exams/${courseId}?lang=${state.lang}`);
+    examData = await api(`/exams/${courseId}`);
   } catch (e) {
     document.getElementById("examCard").innerHTML = `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
     return;
@@ -634,7 +652,7 @@ async function renderExam(courseId) {
     try {
       const r = await api(`/exams/${courseId}/submit`, {
         method: "POST",
-        body: { answers, lang: state.lang }
+        body: { answers, lang: getLang() }
       });
 
       msg.textContent = r.passed
