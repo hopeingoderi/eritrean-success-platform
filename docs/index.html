@@ -1,32 +1,310 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Eritrean Success Journey – Student</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link rel="stylesheet" href="student/styles.css" />
-</head>
-<body>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eritrean Success Journey</title>
 
-<header>
-  <h1>🇪🇷 Eritrean Success Journey</h1>
-  <p>Learn • Grow • Believe • Succeed</p>
+  <!-- Reuse student design -->
+  <link rel="stylesheet" href="./student/styles.css" />
+
+  <style>
+    .hero { padding: 80px 18px; text-align: center; }
+    .hero h1 { font-size: 42px; margin-bottom: 14px; }
+    .hero p { max-width: 760px; margin: 0 auto 26px; font-size: 18px; color: var(--muted); }
+    .hero .row { justify-content: center; gap: 14px; }
+
+    .section { padding: 50px 18px; }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .quote { font-size: 20px; font-weight: 700; text-align: center; }
+    .founder { text-align: center; max-width: 760px; margin: 0 auto; }
+
+    /* language toggle */
+    .langSwitch { display:flex; gap:10px; align-items:center; }
+    .pillBtn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .pillBtn.active {
+      border-color: rgba(94,234,212,.45);
+      background: rgba(94,234,212,.14);
+    }
+
+    /* small glowing hero effect */
+    .heroGlow {
+      position: relative;
+      overflow: hidden;
+    }
+    .heroGlow:before{
+      content:"";
+      position:absolute;
+      inset:-200px;
+      background:
+        radial-gradient(600px 240px at 20% 10%, rgba(96,165,250,.18), transparent 60%),
+        radial-gradient(500px 220px at 80% 30%, rgba(94,234,212,.14), transparent 60%);
+      animation: floaty 10s ease-in-out infinite alternate;
+      pointer-events:none;
+      z-index:0;
+    }
+    .heroGlow > * { position: relative; z-index:1; }
+    @keyframes floaty {
+      from { transform: translate3d(-10px,-6px,0) scale(1); }
+      to   { transform: translate3d(10px,6px,0) scale(1.03); }
+    }
+
+    /* testimonials */
+    .testGrid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap:16px;
+    }
+    .tName{ font-weight: 800; margin-top:10px; }
+  </style>
+</head>
+
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">ER</div>
+    <div>
+      <div class="title" data-i="brandTitle">Eritrean Success Journey</div>
+      <div class="subtitle" data-i="brandSubtitle">Learn • Grow • Believe • Succeed</div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <div class="langSwitch">
+      <button class="pillBtn" id="btnEN">EN</button>
+      <button class="pillBtn" id="btnTI">ትግርኛ</button>
+    </div>
+    <a class="btn" href="/student/#/login" data-i="loginBtn">Login</a>
+    <a class="btn primary" href="/student/#/register" data-i="startBtn">Get Started</a>
+  </nav>
 </header>
 
-<nav id="nav">
-  <button onclick="go('login')">Login</button>
-  <button onclick="go('register')">Register</button>
-  <button onclick="logout()">Logout</button>
-</nav>
+<main class="container">
 
-<main id="app">
-  <!-- content loads here -->
+  <!-- HERO -->
+  <section class="hero heroGlow">
+    <h1 data-i="heroTitle">Rise with Purpose.<br/>Build with Faith.</h1>
+    <p data-i="heroDesc">
+      Eritrean Success Journey is a structured path to mindset, discipline,
+      leadership, and long-term success — built on belief, action, and consistency.
+    </p>
+    <div class="row">
+      <a class="btn primary" href="/student/" data-i="heroCta1">Start Your Journey</a>
+      <a class="btn" href="/student/#/login" data-i="heroCta2">Student Login</a>
+    </div>
+  </section>
+
+  <!-- WHY -->
+  <section class="section">
+    <div class="card">
+      <div class="h2" data-i="whyTitle">Why this journey exists</div>
+      <p class="p" data-i="whyDesc">
+        Many students have talent — but lack direction. This platform gives structure:
+        lessons, reflection, progress tracking, exams, and certificates.
+      </p>
+    </div>
+  </section>
+
+  <!-- MOVEMENT -->
+  <section class="section">
+    <div class="card">
+      <div class="quote" data-i="quote">
+        “Motivation fades. Purpose stays.<br/>Faith gives direction. Discipline creates results.”
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section">
+    <div class="features">
+      <div class="card">
+        <div class="h2" data-i="f1t">Purpose-Driven Learning</div>
+        <p class="p" data-i="f1d">
+          Every lesson is designed to shape mindset, habits, and clarity — not just knowledge.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="h2" data-i="f2t">Faith & Belief</div>
+        <p class="p" data-i="f2d">
+          Growth begins inside. Faith builds confidence, resilience, and vision for the future.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="h2" data-i="f3t">Action Over Talk</div>
+        <p class="p" data-i="f3d">
+          Reflection, discipline, exams, and certificates — progress is earned step by step.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEVELS PREVIEW -->
+  <section class="section">
+    <div class="card">
+      <div class="h2" data-i="journeyTitle">The Journey</div>
+      <p class="p" data-i="journeyDesc">
+        Foundation → Growth → Excellence — a clear roadmap to build confidence, discipline, and leadership.
+      </p>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="section">
+    <div class="h2" data-i="tTitle">Voices of Growth</div>
+    <div class="testGrid" style="margin-top:14px;">
+      <div class="card">
+        <div class="p" data-i="t1">“I stopped waiting for motivation. Now I study with discipline.”</div>
+        <div class="tName" data-i="t1n">Student</div>
+      </div>
+      <div class="card">
+        <div class="p" data-i="t2">“The reflection part changed me. I started thinking deeper.”</div>
+        <div class="tName" data-i="t2n">Student</div>
+      </div>
+      <div class="card">
+        <div class="p" data-i="t3">“It feels like a real journey — not just random lessons.”</div>
+        <div class="tName" data-i="t3n">Student</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOUNDER -->
+  <section class="section">
+    <div class="card founder">
+      <div class="h2" data-i="founderTitle">A Message from the Founder</div>
+      <p class="p" data-i="founderP1">
+        I created this journey because success is not an accident.
+        It is built with belief, discipline, and daily effort.
+      </p>
+      <p class="p" data-i="founderP2">
+        This platform exists to help you rise with purpose and walk your path
+        with faith — one lesson at a time.
+      </p>
+      <p class="small">— Michael Afewerki</p>
+    </div>
+  </section>
+
 </main>
 
-<footer>
-  © 2026 Eritrean Success Journey
+<footer class="footer container">
+  © <span id="year"></span> <span data-i="footerBrand">Eritrean Success Journey</span>
 </footer>
 
-<script src="student/app.js"></script>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+
+  const TEXT = {
+    en: {
+      brandTitle:"Eritrean Success Journey",
+      brandSubtitle:"Learn • Grow • Believe • Succeed",
+      loginBtn:"Login",
+      startBtn:"Get Started",
+      heroTitle:"Rise with Purpose.<br/>Build with Faith.",
+      heroDesc:"Eritrean Success Journey is a structured path to mindset, discipline, leadership, and long-term success — built on belief, action, and consistency.",
+      heroCta1:"Start Your Journey",
+      heroCta2:"Student Login",
+      whyTitle:"Why this journey exists",
+      whyDesc:"Many students have talent — but lack direction. This platform gives structure: lessons, reflection, progress tracking, exams, and certificates.",
+      quote:"“Motivation fades. Purpose stays.<br/>Faith gives direction. Discipline creates results.”",
+      f1t:"Purpose-Driven Learning",
+      f1d:"Every lesson is designed to shape mindset, habits, and clarity — not just knowledge.",
+      f2t:"Faith & Belief",
+      f2d:"Growth begins inside. Faith builds confidence, resilience, and vision for the future.",
+      f3t:"Action Over Talk",
+      f3d:"Reflection, discipline, exams, and certificates — progress is earned step by step.",
+      journeyTitle:"The Journey",
+      journeyDesc:"Foundation → Growth → Excellence — a clear roadmap to build confidence, discipline, and leadership.",
+      tTitle:"Voices of Growth",
+      t1:"“I stopped waiting for motivation. Now I study with discipline.”",
+      t1n:"Student",
+      t2:"“The reflection part changed me. I started thinking deeper.”",
+      t2n:"Student",
+      t3:"“It feels like a real journey — not just random lessons.”",
+      t3n:"Student",
+      founderTitle:"A Message from the Founder",
+      founderP1:"I created this journey because success is not an accident. It is built with belief, discipline, and daily effort.",
+      founderP2:"This platform exists to help you rise with purpose and walk your path with faith — one lesson at a time.",
+      footerBrand:"Eritrean Success Journey"
+    },
+    ti: {
+      brandTitle:"Eritrean Success Journey",
+      brandSubtitle:"ተማር • ተወልድ • እመን • ተሳካ",
+      loginBtn:"መግቢ",
+      startBtn:"ጀምር",
+      heroTitle:"ብዓላማ ተነስ።<br/>ብእምነት ሃንጽ።",
+      heroDesc:"Eritrean Success Journey መንገዲ ናይ ሓሳብ፣ ትግሃት፣ መሪሕነት እና ዘላለይ ዓወት እዩ — ብእምነት፣ ተግባር እና ትጽናዕቲ ዝተመስረተ።",
+      heroCta1:"ጉዕዞኻ ጀምር",
+      heroCta2:"መግቢ ተማሃሪ",
+      whyTitle:"እዚ ጉዕዞ ስለምንታይ ተፈጢሩ?",
+      whyDesc:"ብዙሓት ተማሃሮ ብቕዓት ኣለዎም — ግን ኣቕጣጫ ይጐድሎም። እዚ መድረኽ ስርዓት ይሃብ: ትምህርቲ፣ ምልማድ፣ ምክትታል እድገት፣ ፈተናታት እና ምስክርነት።",
+      quote:"“ምትእስስ ይሕለፍ። ዓላማ ይቕጽል።<br/>እምነት ኣቕጣጫ ትህብ። ትጽናዕቲ ውጽኢት ትፈጥር።”",
+      f1t:"ብዓላማ ዝተመራሕ ትምህርቲ",
+      f1d:"እያ ትምህርቲ ሓሳብ፣ ልምዲ እና ግልጽነት ክትሃንጽ ዝተዳለወት።",
+      f2t:"እምነትን ምእማንን",
+      f2d:"እድገት ካብ ውሽጢ ትጀምር። እምነት ትእምነት፣ ጽንዓት እና ራእይ ትሃብ።",
+      f3t:"ተግባር እንታይ እምበር ቃል",
+      f3d:"ምልማድ፣ ትጽናዕቲ፣ ፈተናን ምስክርነትን — እድገት ብደረጃ ትረከብ።",
+      journeyTitle:"ጉዕዞና",
+      journeyDesc:"Foundation → Growth → Excellence — ግልጽ መንገዲ ናይ ትእምነት፣ ትጽናዕቲ እና መሪሕነት።",
+      tTitle:"ድምጺ እድገት",
+      t1:"“ምትእስስ ኣይጸበንኩን። ሕጂ ብትጽናዕቲ እማር።”",
+      t1n:"ተማሃሪ",
+      t2:"“ናይ ምልማድ ክፍሊ ቀይሩኒ። ብዝበለጸ እሓስብ ጀሚረ።”",
+      t2n:"ተማሃሪ",
+      t3:"“ሓቀኛ ጉዕዞ ይመስል — ዘይተራእየ ትምህርቲ ኣይኮነን።”",
+      t3n:"ተማሃሪ",
+      founderTitle:"መልእኽቲ ካብ መሰረቲ",
+      founderP1:"እዚ ጉዕዞ ፈጢረዮ ምኽንያቱ ዓወት ብኣጋጣሚ ኣይመጽእን። ብእምነት፣ ትጽናዕቲ እና ናይ መዓልቲ ጥራይ ጻዕሪ ይሃንጽ።",
+      founderP2:"እዚ መድረኽ ብዓላማ ክትነስን ብእምነት መንገድካ ክትሄድን ክሕግዘካ እዩ — ንሓደ ትምህርቲ ንሓደ ግዜ።",
+      footerBrand:"Eritrean Success Journey"
+    }
+  };
+
+  function getLang() {
+    const v = localStorage.getItem("landing_lang");
+    return (v === "ti" || v === "en") ? v : "en";
+  }
+  function setLang(v) {
+    const lang = (v === "ti" || v === "en") ? v : "en";
+    localStorage.setItem("landing_lang", lang);
+    applyLang(lang);
+  }
+  function applyLang(lang) {
+    const dict = TEXT[lang] || TEXT.en;
+    document.querySelectorAll("[data-i]").forEach(el => {
+      const key = el.getAttribute("data-i");
+      const val = dict[key];
+      if (val === undefined) return;
+      // allow <br/> in heroTitle/quote
+      el.innerHTML = String(val);
+    });
+
+    const en = document.getElementById("btnEN");
+    const ti = document.getElementById("btnTI");
+    en.classList.toggle("active", lang === "en");
+    ti.classList.toggle("active", lang === "ti");
+  }
+
+  document.getElementById("btnEN").onclick = () => setLang("en");
+  document.getElementById("btnTI").onclick = () => setLang("ti");
+
+  applyLang(getLang());
+</script>
+
 </body>
 </html>
