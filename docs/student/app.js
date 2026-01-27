@@ -1,3 +1,5 @@
+// docs/student/app.js
+
 // ================= API BASE =================
 const API_BASE = (() => {
   const host = window.location.hostname;
@@ -7,20 +9,27 @@ const API_BASE = (() => {
   return "http://localhost:4000/api";
 })();
 
-// ================= STATE =================
+// ================= DOM =================
 const appEl = document.getElementById("app");
 const navEl = document.getElementById("nav");
 
+// ================= STATE =================
 const state = {
   user: null,
-  lang: "en",
+  lang: "en", // "en" | "ti"
   courses: [],
-  lessonsByCourse: {},
-  progressByCourse: {},
-  examStatusByCourse: {}
+  lessonsByCourse: {},   // courseId -> lessons[]
+  progressByCourse: {},  // courseId -> progress object
+  examStatusByCourse: {} // courseId -> { passed, score }
 };
 
-// ================= HELPERS =================
+// ================= UTIL =================
+function escapeHtml(str = "") {
+  return String(str).replace(/[&<>"']/g, (m) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[m]));
+}
+
 function getLang() {
   const saved = localStorage.getItem("lang");
   return (saved === "ti" || saved === "en") ? saved : "en";
@@ -29,26 +38,8 @@ function getLang() {
 function setLang(lang) {
   const v = (lang === "ti" || lang === "en") ? lang : "en";
   localStorage.setItem("lang", v);
+  state.lang = v;
   return v;
-}
-
-function escapeHtml(str = "") {
-  return String(str).replace(/[&<>"']/g, m => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;",
-    '"': "&quot;", "'": "&#39;"
-  }[m]));
-}
-
-async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(`${API_BASE}${path}?lang=${state.lang}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Request failed");
-  return data;
 }
 
 function setHash(h) {
@@ -63,23 +54,56 @@ function isLoggedIn() {
   return !!state.user;
 }
 
+function withLang(path) {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}lang=${encodeURIComponent(state.lang)}`;
+}
+
+async function api(path, { method = "GET", body } = {}) {
+  const url = API_BASE + withLang(path);
+
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Request failed");
+  }
+  return data;
+}
+
 // ================= NAV =================
 function updateNav() {
   if (!navEl) return;
-  const buttons = navEl.querySelectorAll("button");
-  buttons.forEach(btn => btn.style.display = "none");
+
+  // safer: detect buttons by text
+  const btns = Array.from(navEl.querySelectorAll("button"));
+  const loginBtn = btns.find(b => (b.textContent || "").toLowerCase().includes("login"));
+  const regBtn   = btns.find(b => (b.textContent || "").toLowerCase().includes("register"));
+  const outBtn   = btns.find(b => (b.textContent || "").toLowerCase().includes("logout"));
 
   if (state.user) {
-    navEl.querySelector(".danger").style.display = "inline-block";
+    if (loginBtn) loginBtn.style.display = "none";
+    if (regBtn) regBtn.style.display = "none";
+    if (outBtn) outBtn.style.display = "inline-block";
   } else {
-    buttons[0].style.display = "inline-block";
-    buttons[1].style.display = "inline-block";
+    if (loginBtn) loginBtn.style.display = "inline-block";
+    if (regBtn) regBtn.style.display = "inline-block";
+    if (outBtn) outBtn.style.display = "none";
   }
 }
 
-window.go = (page) => setHash(`#/${page}`);
+window.go = function (page) {
+  if (page === "login") setHash("#/login");
+  else if (page === "register") setHash("#/register");
+  else setHash("#/dashboard");
+};
 
-window.logout = async () => {
+window.logout = async function () {
   try { await api("/auth/logout", { method: "POST" }); } catch {}
   state.user = null;
   updateNav();
@@ -95,12 +119,12 @@ async function loadMe() {
 
 async function loadCourses() {
   const r = await api("/courses");
-  state.courses = r.courses || [];
+  state.courses = Array.isArray(r.courses) ? r.courses : [];
 }
 
 async function loadLessons(courseId) {
   const r = await api(`/lessons/${courseId}`);
-  state.lessonsByCourse[courseId] = r.lessons || [];
+  state.lessonsByCourse[courseId] = Array.isArray(r.lessons) ? r.lessons : [];
 }
 
 async function loadProgress(courseId) {
@@ -109,15 +133,29 @@ async function loadProgress(courseId) {
 }
 
 async function loadExamStatus(courseId) {
-  state.examStatusByCourse[courseId] =
-    await api(`/exams/status/${courseId}`);
+  const r = await api(`/exams/status/${courseId}`);
+  state.examStatusByCourse[courseId] = r || { passed: false, score: null };
 }
 
+async function loadCertificateStatus(courseId) {
+  return api(`/certificates/status/${courseId}`);
+}
+
+async function claimCertificate(courseId) {
+  return api(`/certificates/claim`, { method: "POST", body: { courseId } });
+}
+
+function progressFor(courseId, lessonIndex) {
+  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
+  return p || { completed: false, reflectionText: "" };
+}
 // ================= ROUTER =================
 window.addEventListener("hashchange", render);
 
 async function render() {
-  try { await loadMe(); } catch { state.user = null; }
+  try { await loadMe(); }
+  catch { state.user = null; }
+
   updateNav();
 
   const [page, a, b] = routeParts();
@@ -137,32 +175,44 @@ async function render() {
   if (page === "cert") return renderCert(a);
 
   setHash("#/dashboard");
+  return renderDashboard();
 }
 
 // ================= LOGIN =================
 function renderLogin() {
   appEl.innerHTML = `
     <div class="card">
-      <h1>Login</h1>
-      <input id="email" placeholder="Email" />
-      <input id="password" type="password" placeholder="Password" />
+      <div class="h1">Login</div>
+
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+
+      <label>Password</label>
+      <input id="password" type="password" placeholder="••••••••" />
+
+      <div style="height:12px"></div>
       <button class="btn primary" id="loginBtn">Login</button>
-      <div id="msg" class="small"></div>
+      <div class="small" id="msg" style="margin-top:10px"></div>
     </div>
   `;
+
+  const emailEl = document.getElementById("email");
+  const passEl  = document.getElementById("password");
+  const msgEl   = document.getElementById("msg");
+
   document.getElementById("loginBtn").onclick = async () => {
+    msgEl.textContent = "";
     try {
-      await api("/auth/login", {
+      const r = await api("/auth/login", {
         method: "POST",
-        body: {
-          email: email.value,
-          password: password.value
-        }
+        body: { email: emailEl.value.trim(), password: passEl.value.trim() }
       });
+      state.user = r.user;
+      updateNav();
       setHash("#/dashboard");
       render();
     } catch (e) {
-      msg.textContent = e.message;
+      msgEl.textContent = "Login failed: " + e.message;
     }
   };
 }
@@ -171,136 +221,514 @@ function renderLogin() {
 function renderRegister() {
   appEl.innerHTML = `
     <div class="card">
-      <h1>Register</h1>
-      <input id="name" placeholder="Name" />
-      <input id="email" placeholder="Email" />
-      <input id="password" type="password" placeholder="Password" />
+      <div class="h1">Register</div>
+
+      <label>Name</label>
+      <input id="name" type="text" placeholder="Your name" />
+
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+
+      <label>Password</label>
+      <input id="password" type="password" placeholder="min 6 characters" />
+
+      <div style="height:12px"></div>
       <button class="btn primary" id="regBtn">Create account</button>
-      <div id="msg" class="small"></div>
+      <div class="small" id="msg" style="margin-top:10px"></div>
     </div>
   `;
-  regBtn.onclick = async () => {
+
+  const nameEl  = document.getElementById("name");
+  const emailEl = document.getElementById("email");
+  const passEl  = document.getElementById("password");
+  const msgEl   = document.getElementById("msg");
+
+  document.getElementById("regBtn").onclick = async () => {
+    msgEl.textContent = "";
     try {
-      await api("/auth/register", {
+      const r = await api("/auth/register", {
         method: "POST",
-        body: {
-          name: name.value,
-          email: email.value,
-          password: password.value
-        }
+        body: { name: nameEl.value.trim(), email: emailEl.value.trim(), password: passEl.value.trim() }
       });
+      state.user = r.user;
+      updateNav();
       setHash("#/dashboard");
       render();
     } catch (e) {
-      msg.textContent = e.message;
+      msgEl.textContent = "Register failed: " + e.message;
     }
   };
 }
 
 // ================= DASHBOARD =================
 async function renderDashboard() {
-  await loadCourses();
-
   appEl.innerHTML = `
     <div class="card">
-      <h1>Your Levels</h1>
-      <div class="row">
-        <button class="btn" id="en">English</button>
-        <button class="btn" id="ti">ትግርኛ</button>
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Your Levels</div>
+          <div class="small">Welcome, <b>${escapeHtml(state.user?.name || "")}</b></div>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="langEn">English</button>
+          <button class="btn" id="langTi">ትግርኛ</button>
+        </div>
       </div>
     </div>
-    ${state.courses.map(c => `
-      <div class="card">
-        <h2>${escapeHtml(c.title)}</h2>
-        <p>${escapeHtml(c.intro)}</p>
-        <button class="btn primary" onclick="setHash('#/course/${c.id}')">Open lessons</button>
-        <button class="btn" onclick="setHash('#/exam/${c.id}')">Final exam</button>
-        <button class="btn" onclick="setHash('#/cert/${c.id}')">Certificate</button>
-      </div>
-    `).join("")}
+    <div id="coursesWrap"></div>
   `;
 
-  en.onclick = () => { state.lang = setLang("en"); render(); };
-  ti.onclick = () => { state.lang = setLang("ti"); render(); };
+  document.getElementById("langEn").onclick = () => { setLang("en"); render(); };
+  document.getElementById("langTi").onclick = () => { setLang("ti"); render(); };
+
+  try {
+    await loadCourses();
+  } catch (e) {
+    document.getElementById("coursesWrap").innerHTML =
+      `<div class="card"><div class="small">Failed to load courses: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
+
+  const wrap = document.getElementById("coursesWrap");
+
+  wrap.innerHTML = state.courses.map(c => `
+    <div class="card">
+      <div class="h2">${escapeHtml(c.title || c.id)}</div>
+      <div class="p">${escapeHtml(c.intro || "")}</div>
+
+      <div class="row" style="justify-content:flex-start; gap:10px;">
+        <button class="btn primary" data-open-course="${escapeHtml(c.id)}">Open lessons</button>
+        <button class="btn secondary" data-open-exam="${escapeHtml(c.id)}">Final exam</button>
+        <button class="btn" data-open-cert="${escapeHtml(c.id)}">Certificate</button>
+      </div>
+
+      <div class="small" id="dashMeta_${escapeHtml(c.id)}" style="margin-top:8px;"></div>
+    </div>
+  `).join("");
+
+  wrap.querySelectorAll("[data-open-course]").forEach(btn => {
+    btn.onclick = () => { setHash(`#/course/${btn.getAttribute("data-open-course")}`); render(); };
+  });
+  wrap.querySelectorAll("[data-open-exam]").forEach(btn => {
+    btn.onclick = () => { setHash(`#/exam/${btn.getAttribute("data-open-exam")}`); render(); };
+  });
+  wrap.querySelectorAll("[data-open-cert]").forEach(btn => {
+    btn.onclick = () => { setHash(`#/cert/${btn.getAttribute("data-open-cert")}`); render(); };
+  });
+
+  // meta: progress + exam
+  for (const c of state.courses) {
+    const metaEl = document.getElementById(`dashMeta_${c.id}`);
+    if (!metaEl) continue;
+
+    try {
+      await loadLessons(c.id);
+      await loadProgress(c.id);
+      await loadExamStatus(c.id);
+
+      const lessons = state.lessonsByCourse[c.id] || [];
+      const pmap = state.progressByCourse[c.id]?.byLessonIndex || {};
+      const done = Object.values(pmap).filter(x => x && x.completed).length;
+      const total = lessons.length;
+
+      const exam = state.examStatusByCourse[c.id] || {};
+      metaEl.innerHTML = `Lessons: <b>${done}</b> / ${total} • Exam: <b>${exam.passed ? "PASSED ✅" : "Not passed"}</b>`;
+    } catch {
+      metaEl.textContent = "";
+    }
+  }
 }
 
 // ================= COURSE =================
 async function renderCourse(courseId) {
-  await loadLessons(courseId);
-  await loadProgress(courseId);
-
-  const lessons = state.lessonsByCourse[courseId];
+  if (!courseId) { setHash("#/dashboard"); return render(); }
 
   appEl.innerHTML = `
     <div class="card">
-      <h1>Lessons</h1>
-      ${lessons.map(l => `
-        <div class="card">
-          <h2>${escapeHtml(l.title)}</h2>
-          <button class="btn primary"
-            onclick="setHash('#/lesson/${courseId}/${l.lessonIndex}')">
-            Open
-          </button>
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Lessons</div>
+          <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
         </div>
-      `).join("")}
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="backDash">Back</button>
+          <button class="btn secondary" id="openExam">Final exam</button>
+          <button class="btn" id="openCert">Certificate</button>
+        </div>
+      </div>
+      <div id="courseProgress" style="margin-top:10px;"></div>
     </div>
+    <div id="lessonsWrap"></div>
   `;
+
+  document.getElementById("backDash").onclick = () => { setHash("#/dashboard"); render(); };
+  document.getElementById("openExam").onclick = () => { setHash(`#/exam/${courseId}`); render(); };
+  document.getElementById("openCert").onclick = () => { setHash(`#/cert/${courseId}`); render(); };
+
+  try {
+    await loadLessons(courseId);
+    await loadProgress(courseId);
+  } catch (e) {
+    document.getElementById("lessonsWrap").innerHTML =
+      `<div class="card"><div class="small">Failed: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
+
+  const lessons = state.lessonsByCourse[courseId] || [];
+  const pmap = state.progressByCourse[courseId]?.byLessonIndex || {};
+
+  const total = lessons.length;
+  const completed = Object.values(pmap).filter(x => x && x.completed).length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  document.getElementById("courseProgress").innerHTML = `
+    <div class="small">Course progress: <b>${completed}</b> / ${total} (${pct}%)</div>
+    <div class="progressWrap" style="margin-top:6px;"><div class="progressBar" style="width:${pct}%"></div></div>
+  `;
+
+  const listHtml = lessons
+    .slice()
+    .sort((a, b) => a.lessonIndex - b.lessonIndex)
+    .map(l => {
+      const done = !!pmap[l.lessonIndex]?.completed;
+      return `
+        <div class="card">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <div>
+              <div class="h2">${escapeHtml(l.title || "")}</div>
+              <div class="small">Lesson ${l.lessonIndex + 1} ${done ? "✅ Completed" : ""}</div>
+            </div>
+            <button class="btn primary" data-open-lesson="${l.lessonIndex}">Open</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+  const wrap = document.getElementById("lessonsWrap");
+  wrap.innerHTML = listHtml || `<div class="card"><div class="small">No lessons found.</div></div>`;
+
+  wrap.querySelectorAll("[data-open-lesson]").forEach(btn => {
+    btn.onclick = () => {
+      const idx = btn.getAttribute("data-open-lesson");
+      setHash(`#/lesson/${courseId}/${idx}`);
+      render();
+    };
+  });
 }
 
 // ================= LESSON =================
 async function renderLesson(courseId, lessonIndex) {
-  if (!state.lessonsByCourse[courseId]) await loadLessons(courseId);
-  await loadProgress(courseId);
-
-  const lesson = state.lessonsByCourse[courseId]
-    .find(l => l.lessonIndex === lessonIndex);
+  if (!courseId || !Number.isFinite(lessonIndex)) {
+    setHash("#/dashboard");
+    return render();
+  }
 
   appEl.innerHTML = `
     <div class="card">
-      <h1>${escapeHtml(lesson.title)}</h1>
-      <h3>Learn</h3>
-      <p>${escapeHtml(lesson.learnText)}</p>
-      <h3>Task</h3>
-      <p>${escapeHtml(lesson.task)}</p>
-      <textarea id="reflection" placeholder="Write your reflection..."></textarea>
+      <div class="h1">Lesson</div>
+      <div class="small">Course: <b>${escapeHtml(courseId)}</b> • Lesson: <b>${lessonIndex + 1}</b></div>
+      <div id="bars" style="margin-top:10px;"></div>
+    </div>
+    <div class="card" id="lessonCard"><div class="small">Loading...</div></div>
+  `;
+
+  try {
+    if (!state.lessonsByCourse[courseId]) await loadLessons(courseId);
+    await loadProgress(courseId);
+  } catch (e) {
+    document.getElementById("lessonCard").innerHTML = `<div class="small">Load failed: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const lessons = state.lessonsByCourse[courseId] || [];
+  const lesson = lessons.find(x => x.lessonIndex === lessonIndex);
+  if (!lesson) {
+    document.getElementById("lessonCard").innerHTML = `<div class="small">Lesson not found.</div>`;
+    return;
+  }
+
+  const pmap = state.progressByCourse[courseId]?.byLessonIndex || {};
+  const total = lessons.length;
+  const doneCount = Object.values(pmap).filter(x => x && x.completed).length;
+  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
+  document.getElementById("bars").innerHTML = `
+    <div class="small">Course progress: <b>${doneCount}</b> / ${total} (${pct}%)</div>
+    <div class="progressWrap" style="margin-top:6px;"><div class="progressBar" style="width:${pct}%"></div></div>
+    <div class="small" style="margin-top:10px;">Lesson ${lessonIndex + 1} of ${total}</div>
+  `;
+
+  const p = progressFor(courseId, lessonIndex);
+  const prevExists = lessons.some(x => x.lessonIndex === lessonIndex - 1);
+  const nextExists = lessons.some(x => x.lessonIndex === lessonIndex + 1);
+
+  document.getElementById("lessonCard").innerHTML = `
+    <div class="h2">${escapeHtml(lesson.title || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h2" style="font-size:16px;">Learn</div>
+    <div class="p">${escapeHtml(lesson.learnText || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h2" style="font-size:16px;">Task</div>
+    <div class="p">${escapeHtml(lesson.task || "")}</div>
+
+    <div style="height:10px"></div>
+    <div class="h2" style="font-size:16px;">Reflection</div>
+    <textarea id="reflection" placeholder="Write your reflection...">${escapeHtml(p.reflectionText || "")}</textarea>
+
+    <div style="height:10px"></div>
+
+    <div class="row" style="justify-content:space-between; gap:10px;">
+      <button class="btn" id="returnBtn">Return</button>
+      <button class="btn" id="prevBtn" ${prevExists ? "" : "disabled"}>Back</button>
       <button class="btn primary" id="saveBtn">Save & Complete</button>
-      <button class="btn" onclick="setHash('#/course/${courseId}')">Return</button>
+      <button class="btn" id="nextBtn" ${(nextExists && p.completed) ? "" : "disabled"}>Next</button>
+    </div>
+
+    <div class="small" id="saveMsg" style="margin-top:10px;"></div>
+    <div class="lockNote" id="nextNote" style="display:${p.completed ? "none" : "block"};">
+      🔒 “Next” unlocks after you press <b>Save & Complete</b>.
     </div>
   `;
 
-  saveBtn.onclick = async () => {
-    await api("/progress/update", {
-      method: "POST",
-      body: {
-        courseId,
-        lessonIndex,
-        completed: true,
-        reflection: reflection.value
-      }
-    });
+  document.getElementById("returnBtn").onclick = () => { setHash(`#/course/${courseId}`); render(); };
+  document.getElementById("prevBtn").onclick = () => {
+    if (!prevExists) return;
+    setHash(`#/lesson/${courseId}/${lessonIndex - 1}`);
     render();
+  };
+  document.getElementById("nextBtn").onclick = () => {
+    if (!nextExists) return;
+    const nowP = progressFor(courseId, lessonIndex);
+    if (!nowP.completed) return;
+    setHash(`#/lesson/${courseId}/${lessonIndex + 1}`);
+    render();
+  };
+
+  document.getElementById("saveBtn").onclick = async () => {
+    const msg = document.getElementById("saveMsg");
+    msg.textContent = "Saving...";
+    const reflection = document.getElementById("reflection").value || "";
+
+    try {
+      await api("/progress/update", {
+        method: "POST",
+        body: { courseId, lessonIndex, reflection, completed: true }
+      });
+
+      msg.textContent = "Saved ✅";
+      await loadProgress(courseId);
+
+      const nextBtn = document.getElementById("nextBtn");
+      if (nextExists && nextBtn) nextBtn.disabled = false;
+      const note = document.getElementById("nextNote");
+      if (note) note.style.display = "none";
+    } catch (e) {
+      msg.textContent = "Save failed: " + e.message;
+    }
   };
 }
 
 // ================= EXAM =================
 async function renderExam(courseId) {
-  const r = await api(`/exams/${courseId}`);
-  appEl.innerHTML = `<div class="card"><h1>Exam</h1></div>`;
+  if (!courseId) { setHash("#/dashboard"); return render(); }
+
+  appEl.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Final Exam</div>
+          <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="backCourse">Back</button>
+          <button class="btn" id="goCert">Certificate</button>
+        </div>
+      </div>
+      <div class="small" id="examMeta" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card" id="examCard"><div class="small">Loading exam...</div></div>
+  `;
+
+  document.getElementById("backCourse").onclick = () => { setHash(`#/course/${courseId}`); render(); };
+  document.getElementById("goCert").onclick = () => { setHash(`#/cert/${courseId}`); render(); };
+
+  let examData;
+  try {
+    examData = await api(`/exams/${courseId}`, { method: "GET" });
+  } catch (e) {
+    document.getElementById("examCard").innerHTML =
+      `<div class="small">Failed to load exam: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const passScore = examData.passScore ?? 70;
+  const questions = examData.exam?.questions || [];
+  const latest = examData.latestAttempt || null;
+
+  document.getElementById("examMeta").innerHTML = `
+    Pass score: <b>${passScore}%</b>
+    ${latest ? ` • Last score: <b>${latest.score}%</b> ${latest.passed ? "✅ PASSED" : "❌"}` : ""}
+  `;
+
+  if (!questions.length) {
+    document.getElementById("examCard").innerHTML =
+      `<div class="small">Exam not configured yet.</div>`;
+    return;
+  }
+
+  const qHtml = questions.map((q, i) => {
+    const opts = (q.options || []).map((opt, oi) => `
+      <label class="quizOption" style="display:flex; gap:10px; align-items:flex-start; margin:8px 0;">
+        <input type="radio" name="q_${i}" value="${oi}" />
+        <div>${escapeHtml(opt)}</div>
+      </label>
+    `).join("");
+
+    return `
+      <div class="card" style="background:rgba(255,255,255,.03); margin-top:10px;">
+        <div class="h2" style="font-size:16px;">${i + 1}. ${escapeHtml(q.text || "")}</div>
+        <div style="height:6px"></div>
+        ${opts}
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("examCard").innerHTML = `
+    <div class="small">Answer all questions, then submit.</div>
+    ${qHtml}
+    <div style="height:12px"></div>
+    <button class="btn primary" id="submitExam">Submit Exam</button>
+    <div class="small" id="examMsg" style="margin-top:10px;"></div>
+  `;
+
+  document.getElementById("submitExam").onclick = async () => {
+    const msg = document.getElementById("examMsg");
+    msg.textContent = "Submitting...";
+
+    const answers = [];
+    for (let i = 0; i < questions.length; i++) {
+      const picked = document.querySelector(`input[name="q_${i}"]:checked`);
+      answers[i] = picked ? Number(picked.value) : -1;
+    }
+
+    if (answers.some(x => x < 0)) {
+      msg.textContent = "Please answer all questions before submitting.";
+      return;
+    }
+
+    try {
+      const r = await api(`/exams/${courseId}/submit`, {
+        method: "POST",
+        body: { answers, lang: state.lang }
+      });
+
+      msg.textContent = r.passed
+        ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
+        : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%) — try again.`;
+
+      await loadExamStatus(courseId);
+    } catch (e) {
+      msg.textContent = "Submit failed: " + e.message;
+    }
+  };
 }
 
 // ================= CERTIFICATE =================
 async function renderCert(courseId) {
-  const r = await api(`/certificates/status/${courseId}`);
+  if (!courseId) { setHash("#/dashboard"); return render(); }
+
   appEl.innerHTML = `
     <div class="card">
-      <h1>Certificate</h1>
-      ${r.issued
-        ? `<a class="btn primary" target="_blank"
-            href="${API_BASE}/certificates/${courseId}/pdf">Download PDF</a>`
-        : `<p>Not eligible yet</p>`
-      }
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <div class="h1">Certificate</div>
+          <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn" id="backCourse">Back</button>
+          <button class="btn secondary" id="openExam">Final exam</button>
+        </div>
+      </div>
+      <div class="small" id="certTop" style="margin-top:10px;"></div>
     </div>
+
+    <div class="card" id="certCard"><div class="small">Loading...</div></div>
   `;
+
+  document.getElementById("backCourse").onclick = () => { setHash(`#/course/${courseId}`); render(); };
+  document.getElementById("openExam").onclick = () => { setHash(`#/exam/${courseId}`); render(); };
+
+  let status;
+  try {
+    status = await api(`/certificates/status/${courseId}`, { method: "GET" });
+  } catch (e) {
+    document.getElementById("certCard").innerHTML =
+      `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const top = document.getElementById("certTop");
+  top.innerHTML = `Lessons completed: <b>${status.completedLessons}</b> / ${status.totalLessons} • Exam passed: <b>${status.examPassed ? "YES ✅" : "NO ❌"}</b>`;
+
+  // Already issued
+  if (status.issued) {
+    document.getElementById("certCard").innerHTML = `
+      <div class="h2">Certificate issued ✅</div>
+      <div class="small">Download your PDF:</div>
+      <div style="height:12px"></div>
+      <a class="btn primary" href="${API_BASE}/certificates/${courseId}/pdf" target="_blank" rel="noreferrer">
+        Download PDF
+      </a>
+    `;
+    return;
+  }
+
+  // Not eligible yet
+  if (!status.eligible) {
+    document.getElementById("certCard").innerHTML = `
+      <div class="h2">Not eligible yet 🔒</div>
+      <div class="small" style="margin-top:8px;">
+        To unlock the certificate you must:
+        <div style="margin-top:6px;">${status.completedLessons >= status.totalLessons ? "✅" : "⬜"} Complete all lessons</div>
+        <div style="margin-top:6px;">${status.examPassed ? "✅" : "⬜"} Pass the final exam</div>
+        <div style="margin-top:10px;">Once you pass the exam, come back here and click <b>Claim Certificate</b>.</div>
+      </div>
+      <div style="height:12px"></div>
+      <button class="btn secondary" id="goExamNow">Go to Final Exam</button>
+    `;
+    document.getElementById("goExamNow").onclick = () => { setHash(`#/exam/${courseId}`); render(); };
+    return;
+  }
+
+  // Eligible - can claim
+  document.getElementById("certCard").innerHTML = `
+    <div class="h2">You are eligible ✅</div>
+    <div class="small">Click below to claim your certificate.</div>
+    <div style="height:12px"></div>
+    <button class="btn primary" id="claimBtn">Claim Certificate</button>
+    <div class="small" id="claimMsg" style="margin-top:10px;"></div>
+  `;
+
+  document.getElementById("claimBtn").onclick = async () => {
+    const m = document.getElementById("claimMsg");
+    m.textContent = "Claiming...";
+
+    try {
+      await api(`/certificates/claim`, {
+        method: "POST",
+        body: { courseId }
+      });
+
+      m.textContent = "Claimed ✅ Opening PDF...";
+      window.open(`${API_BASE}/certificates/${courseId}/pdf`, "_blank");
+      setTimeout(() => renderCert(courseId), 400);
+    } catch (e) {
+      m.textContent = "Failed: " + e.message;
+    }
+  };
 }
 
 // ================= BOOT =================
