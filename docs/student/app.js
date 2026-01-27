@@ -1,28 +1,12 @@
 // docs/student/app.js
 // Student SPA (docs/student)
-// Backend routes used:
-// - /api/auth/*
-// - /api/courses
-// - /api/lessons/:courseId
-// - /api/progress/course/:courseId
-// - /api/progress/update
-// - /api/exams/:courseId (GET)
-// - /api/exams/status/:courseId (GET)
-// - /api/exams/:courseId/submit (POST)  body: { answers, lang }
-// - /api/certificates/status/:courseId (GET)
-// - /api/certificates/claim (POST)      body: { courseId }
-// - /api/certificates/:courseId/pdf (GET)
-
-"use strict";
 
 // ================= API BASE =================
 const API_BASE = (() => {
   const host = window.location.hostname;
-  // Production on riseeritrea.com
   if (host === "riseeritrea.com" || host === "www.riseeritrea.com") {
     return "https://api.riseeritrea.com/api";
   }
-  // Local dev
   return "http://localhost:4000/api";
 })();
 
@@ -41,7 +25,6 @@ const state = {
 };
 
 // ================= HELPERS =================
-// ---- language memory ----
 function getLang() {
   const saved = localStorage.getItem("lang");
   return (saved === "ti" || saved === "en") ? saved : "en";
@@ -49,48 +32,39 @@ function getLang() {
 function setLang(lang) {
   const v = (lang === "ti" || lang === "en") ? lang : "en";
   localStorage.setItem("lang", v);
+  state.lang = v;
   return v;
 }
 
-// ---- HTML escape ----
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[m]));
 }
 
-// ---- router helpers ----
 function setHash(h) { if (location.hash !== h) location.hash = h; }
 function routeParts() { return (location.hash || "#/dashboard").replace("#/", "").split("/"); }
 function isLoggedIn() { return !!state.user; }
 
-// stable ordering for dashboard cards
-function courseFallbackOrder(courseId) {
-  return ({ foundation: 1, growth: 2, excellence: 3 }[courseId] || 999);
-}
-
-// backend/courses route returns { id, title, intro } (already localized)
-function courseTitle(c) { return c?.title || c?.id || ""; }
-function courseDesc(c) { return c?.intro || ""; }
-
-// progress helper
-function progressFor(courseId, lessonIndex) {
-  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
-  return p || { completed: false, reflectionText: "" };
-}
-
-// ---- API url builder (IMPORTANT: works with existing ? queries) ----
+// ✅ robust query builder (won’t break when path already has ?)
 function withLang(path) {
-  const lang = state.lang || "en";
-  return path.includes("?")
-    ? `${path}&lang=${encodeURIComponent(lang)}`
-    : `${path}?lang=${encodeURIComponent(lang)}`;
+  // only add lang for endpoints that use it (courses/lessons/exams GET)
+  const needsLang =
+    path.startsWith("/courses") ||
+    path.startsWith("/lessons/") ||
+    (path.startsWith("/exams/") && !path.includes("/submit")) ||
+    path.startsWith("/exams/status");
+
+  if (!needsLang) return path;
+
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}lang=${encodeURIComponent(state.lang)}`;
 }
 
 async function api(path, { method = "GET", body } = {}) {
-  const url = API_BASE + withLang(path);
+  const fullPath = withLang(path);
 
-  const res = await fetch(url, {
+  const res = await fetch(API_BASE + fullPath, {
     method,
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -100,6 +74,30 @@ async function api(path, { method = "GET", body } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Request failed");
   return data;
+}
+
+// ✅ IMPORTANT: normalize lesson fields (your backend uses `learn`, not `learnText`)
+function normalizeLesson(raw = {}) {
+  return {
+    id: raw.id,
+    courseId: raw.courseId,
+    lessonIndex: Number(raw.lessonIndex ?? raw.lesson_index ?? 0),
+    title: raw.title ?? raw.title_en ?? raw.title_ti ?? "",
+    learnText:
+      raw.learn ?? raw.learnText ?? raw.learn_en ?? raw.learn_ti ?? raw.learnTi ?? raw.learnEn ?? "",
+    task:
+      raw.task ?? raw.taskText ?? raw.task_en ?? raw.task_ti ?? raw.taskTi ?? raw.taskEn ?? "",
+    quiz: raw.quiz || null
+  };
+}
+
+function progressFor(courseId, lessonIndex) {
+  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
+  return p || { completed: false, reflectionText: "" };
+}
+
+function courseFallbackOrder(courseId) {
+  return ({ foundation: 1, growth: 2, excellence: 3 }[courseId] || 999);
 }
 
 // ================= NAV =================
@@ -114,10 +112,10 @@ function updateNav() {
   if (state.user) {
     if (loginBtn) loginBtn.style.display = "none";
     if (regBtn) regBtn.style.display = "none";
-    if (outBtn) outBtn.style.display = "inline-block";
+    if (outBtn) outBtn.style.display = "inline-flex";
   } else {
-    if (loginBtn) loginBtn.style.display = "inline-block";
-    if (regBtn) regBtn.style.display = "inline-block";
+    if (loginBtn) loginBtn.style.display = "inline-flex";
+    if (regBtn) regBtn.style.display = "inline-flex";
     if (outBtn) outBtn.style.display = "none";
   }
 }
@@ -146,17 +144,13 @@ async function loadMe() {
 async function loadCourses() {
   const r = await api("/courses");
   state.courses = Array.isArray(r.courses) ? r.courses : [];
-
-  state.courses.sort((a, b) => {
-    const ao = courseFallbackOrder(a.id);
-    const bo = courseFallbackOrder(b.id);
-    return ao - bo;
-  });
+  state.courses.sort((a, b) => courseFallbackOrder(a.id) - courseFallbackOrder(b.id));
 }
 
 async function loadLessons(courseId) {
   const r = await api(`/lessons/${courseId}`);
-  state.lessonsByCourse[courseId] = Array.isArray(r.lessons) ? r.lessons : [];
+  const raw = Array.isArray(r.lessons) ? r.lessons : [];
+  state.lessonsByCourse[courseId] = raw.map(normalizeLesson);
 }
 
 async function loadProgress(courseId) {
@@ -172,6 +166,7 @@ async function loadExamStatus(courseId) {
 async function loadCertificateStatus(courseId) {
   return api(`/certificates/status/${courseId}`);
 }
+
 async function claimCertificate(courseId) {
   return api(`/certificates/claim`, { method: "POST", body: { courseId } });
 }
@@ -298,13 +293,11 @@ async function renderDashboard() {
   `;
 
   document.getElementById("langEn").onclick = async () => {
-    state.lang = setLang("en");
-    await loadCourses();
+    setLang("en");
     renderDashboard();
   };
   document.getElementById("langTi").onclick = async () => {
-    state.lang = setLang("ti");
-    await loadCourses();
+    setLang("ti");
     renderDashboard();
   };
 
@@ -319,8 +312,8 @@ async function renderDashboard() {
   const wrap = document.getElementById("coursesWrap");
   wrap.innerHTML = state.courses.map(c => `
     <div class="card">
-      <div class="h2">${escapeHtml(courseTitle(c))}</div>
-      <div class="p">${escapeHtml(courseDesc(c))}</div>
+      <div class="h2">${escapeHtml(c.title || c.id || "")}</div>
+      <div class="p">${escapeHtml(c.intro || "")}</div>
 
       <div class="row" style="justify-content:flex-start; gap:10px;">
         <button class="btn primary" data-open-course="${escapeHtml(c.id)}">Open lessons</button>
@@ -342,7 +335,6 @@ async function renderDashboard() {
     btn.onclick = () => { setHash(`#/cert/${btn.getAttribute("data-open-cert")}`); render(); };
   });
 
-  // Meta per course
   for (const c of state.courses) {
     const metaEl = document.getElementById(`dashMeta_${c.id}`);
     if (!metaEl) continue;
@@ -489,6 +481,7 @@ async function renderLesson(courseId, lessonIndex) {
   const prevExists = lessons.some(x => x.lessonIndex === lessonIndex - 1);
   const nextExists = lessons.some(x => x.lessonIndex === lessonIndex + 1);
 
+  // ✅ THIS IS THE FIX: lesson.learnText is normalized from lesson.learn
   document.getElementById("lessonCard").innerHTML = `
     <div class="h2">${escapeHtml(lesson.title || "")}</div>
 
@@ -749,9 +742,7 @@ async function renderCert(courseId) {
 
 // ================= BOOT =================
 (function boot() {
-  // default hash
   if (!location.hash) setHash("#/dashboard");
-  // load saved language
   state.lang = getLang();
   updateNav();
   render();
