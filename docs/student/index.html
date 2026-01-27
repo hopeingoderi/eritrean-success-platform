@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Eritrean Success Journey • Student</title>
 
-  <!-- ✅ STUDENT STYLE (NOT ../styles.css) -->
-  <link rel="stylesheet" href="./style.css" />
+  <!-- Absolute path to the ONE global stylesheet -->
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
 
@@ -28,7 +28,6 @@
 
 <main class="container">
   <div id="app"></div>
-
   <footer class="footer">
     © <span id="year"></span> Eritrean Success Journey
   </footer>
@@ -38,7 +37,7 @@
   document.getElementById("year").textContent = new Date().getFullYear();
 </script>
 
-<!-- ✅ STUDENT SPA -->
-<script defer src="./app.js"></script>
+<!-- Absolute path to student SPA -->
+<script src="/student/app.js"></script>
 </body>
 </html>
