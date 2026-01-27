@@ -24,50 +24,48 @@ function quizSafe(v) {
  * GET /api/lessons/:courseId
  * -----------------------------
  */
+/**
+ * PUBLIC / STUDENT
+ * Mounted at: /api/lessons
+ * GET /api/lessons/:courseId?lang=en|ti
+ */
 router.get("/:courseId", async (req, res) => {
   try {
     const courseId = String(req.params.courseId || "").trim();
-    if (!courseId) {
-      return res.status(400).json({ error: "Missing courseId" });
-    }
+    if (!courseId) return res.status(400).json({ error: "Missing courseId" });
+
+    const lang = req.lang || "en"; // from server.js middleware
 
     const r = await query(
-      `
-      SELECT
-        id,
-        lesson_index,
-        title_en,
-        title_ti,
-        learn_en,
-        learn_ti,
-        task_en,
-        task_ti,
-        quiz
-      FROM lessons
-      WHERE course_id = $1
-      ORDER BY lesson_index ASC
-      `,
+      `SELECT id, course_id, lesson_index,
+              title_en, title_ti,
+              learn_en, learn_ti,
+              task_en, task_ti,
+              quiz
+       FROM lessons
+       WHERE course_id=$1
+       ORDER BY lesson_index ASC`,
       [courseId]
     );
 
-    const lessons = r.rows.map(row => ({
+    const lessons = r.rows.map((row) => ({
       id: row.id,
+      courseId: row.course_id,
       lessonIndex: row.lesson_index,
-      title: row.title_en,          // 👈 frontend uses "title"
-      title_en: row.title_en,
-      title_ti: row.title_ti,
-      learn: row.learn_en,           // 👈 frontend uses "learn"
-      learn_en: row.learn_en,
-      learn_ti: row.learn_ti,
-      task_en: row.task_en,
-      task_ti: row.task_ti,
-      quiz: quizSafe(row.quiz)
+
+      // Student-friendly fields (language resolved)
+      title: lang === "ti" ? (row.title_ti || row.title_en || "") : (row.title_en || ""),
+      learn: lang === "ti" ? (row.learn_ti || row.learn_en || "") : (row.learn_en || ""),
+      task:  lang === "ti" ? (row.task_ti  || row.task_en  || "") : (row.task_en  || ""),
+
+      // keep quiz safe (student needs it for lesson quiz)
+      quiz: quizSafe(row.quiz),
     }));
 
     return res.json({ lessons });
-  } catch (err) {
-    console.error("GET /api/lessons/:courseId failed:", err);
-    return res.status(500).json({ error: "Failed to load lessons" });
+  } catch (e) {
+    console.error("GET /api/lessons/:courseId error:", e);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
