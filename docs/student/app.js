@@ -1,11 +1,28 @@
 // docs/student/app.js
+// Student SPA (docs/student)
+// Backend routes used:
+// - /api/auth/*
+// - /api/courses
+// - /api/lessons/:courseId
+// - /api/progress/course/:courseId
+// - /api/progress/update
+// - /api/exams/:courseId (GET)
+// - /api/exams/status/:courseId (GET)
+// - /api/exams/:courseId/submit (POST)  body: { answers, lang }
+// - /api/certificates/status/:courseId (GET)
+// - /api/certificates/claim (POST)      body: { courseId }
+// - /api/certificates/:courseId/pdf (GET)
+
+"use strict";
 
 // ================= API BASE =================
 const API_BASE = (() => {
   const host = window.location.hostname;
+  // Production on riseeritrea.com
   if (host === "riseeritrea.com" || host === "www.riseeritrea.com") {
     return "https://api.riseeritrea.com/api";
   }
+  // Local dev
   return "http://localhost:4000/api";
 })();
 
@@ -18,45 +35,56 @@ const state = {
   user: null,
   lang: "en", // "en" | "ti"
   courses: [],
-  lessonsByCourse: {},   // courseId -> lessons[]
-  progressByCourse: {},  // courseId -> progress object
-  examStatusByCourse: {} // courseId -> { passed, score }
+  lessonsByCourse: {},    // courseId -> lessons[]
+  progressByCourse: {},   // courseId -> progress object
+  examStatusByCourse: {}  // courseId -> { passed, score }
 };
 
-// ================= UTIL =================
+// ================= HELPERS =================
+// ---- language memory ----
+function getLang() {
+  const saved = localStorage.getItem("lang");
+  return (saved === "ti" || saved === "en") ? saved : "en";
+}
+function setLang(lang) {
+  const v = (lang === "ti" || lang === "en") ? lang : "en";
+  localStorage.setItem("lang", v);
+  return v;
+}
+
+// ---- HTML escape ----
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[m]));
 }
 
-function getLang() {
-  const saved = localStorage.getItem("lang");
-  return (saved === "ti" || saved === "en") ? saved : "en";
+// ---- router helpers ----
+function setHash(h) { if (location.hash !== h) location.hash = h; }
+function routeParts() { return (location.hash || "#/dashboard").replace("#/", "").split("/"); }
+function isLoggedIn() { return !!state.user; }
+
+// stable ordering for dashboard cards
+function courseFallbackOrder(courseId) {
+  return ({ foundation: 1, growth: 2, excellence: 3 }[courseId] || 999);
 }
 
-function setLang(lang) {
-  const v = (lang === "ti" || lang === "en") ? lang : "en";
-  localStorage.setItem("lang", v);
-  state.lang = v;
-  return v;
+// backend/courses route returns { id, title, intro } (already localized)
+function courseTitle(c) { return c?.title || c?.id || ""; }
+function courseDesc(c) { return c?.intro || ""; }
+
+// progress helper
+function progressFor(courseId, lessonIndex) {
+  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
+  return p || { completed: false, reflectionText: "" };
 }
 
-function setHash(h) {
-  if (location.hash !== h) location.hash = h;
-}
-
-function routeParts() {
-  return (location.hash || "#/dashboard").replace("#/", "").split("/");
-}
-
-function isLoggedIn() {
-  return !!state.user;
-}
-
+// ---- API url builder (IMPORTANT: works with existing ? queries) ----
 function withLang(path) {
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}lang=${encodeURIComponent(state.lang)}`;
+  const lang = state.lang || "en";
+  return path.includes("?")
+    ? `${path}&lang=${encodeURIComponent(lang)}`
+    : `${path}?lang=${encodeURIComponent(lang)}`;
 }
 
 async function api(path, { method = "GET", body } = {}) {
@@ -70,9 +98,7 @@ async function api(path, { method = "GET", body } = {}) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(typeof data.error === "string" ? data.error : "Request failed");
-  }
+  if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Request failed");
   return data;
 }
 
@@ -80,7 +106,6 @@ async function api(path, { method = "GET", body } = {}) {
 function updateNav() {
   if (!navEl) return;
 
-  // safer: detect buttons by text
   const btns = Array.from(navEl.querySelectorAll("button"));
   const loginBtn = btns.find(b => (b.textContent || "").toLowerCase().includes("login"));
   const regBtn   = btns.find(b => (b.textContent || "").toLowerCase().includes("register"));
@@ -115,11 +140,18 @@ window.logout = async function () {
 async function loadMe() {
   const r = await api("/auth/me");
   state.user = r.user;
+  updateNav();
 }
 
 async function loadCourses() {
   const r = await api("/courses");
   state.courses = Array.isArray(r.courses) ? r.courses : [];
+
+  state.courses.sort((a, b) => {
+    const ao = courseFallbackOrder(a.id);
+    const bo = courseFallbackOrder(b.id);
+    return ao - bo;
+  });
 }
 
 async function loadLessons(courseId) {
@@ -140,25 +172,18 @@ async function loadExamStatus(courseId) {
 async function loadCertificateStatus(courseId) {
   return api(`/certificates/status/${courseId}`);
 }
-
 async function claimCertificate(courseId) {
   return api(`/certificates/claim`, { method: "POST", body: { courseId } });
 }
 
-function progressFor(courseId, lessonIndex) {
-  const p = state.progressByCourse[courseId]?.byLessonIndex?.[lessonIndex];
-  return p || { completed: false, reflectionText: "" };
-}
 // ================= ROUTER =================
 window.addEventListener("hashchange", render);
 
 async function render() {
-  try { await loadMe(); }
-  catch { state.user = null; }
+  try { await loadMe(); } catch { state.user = null; updateNav(); }
 
-  updateNav();
-
-  const [page, a, b] = routeParts();
+  const parts = routeParts();
+  const page = parts[0] || "dashboard";
 
   if (page === "login") return renderLogin();
   if (page === "register") return renderRegister();
@@ -169,10 +194,10 @@ async function render() {
   }
 
   if (page === "dashboard") return renderDashboard();
-  if (page === "course") return renderCourse(a);
-  if (page === "lesson") return renderLesson(a, Number(b));
-  if (page === "exam") return renderExam(a);
-  if (page === "cert") return renderCert(a);
+  if (page === "course") return renderCourse(parts[1]);
+  if (page === "lesson") return renderLesson(parts[1], Number(parts[2]));
+  if (page === "exam") return renderExam(parts[1]);
+  if (page === "cert") return renderCert(parts[1]);
 
   setHash("#/dashboard");
   return renderDashboard();
@@ -196,23 +221,20 @@ function renderLogin() {
     </div>
   `;
 
-  const emailEl = document.getElementById("email");
-  const passEl  = document.getElementById("password");
-  const msgEl   = document.getElementById("msg");
-
   document.getElementById("loginBtn").onclick = async () => {
-    msgEl.textContent = "";
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const msg = document.getElementById("msg");
+    msg.textContent = "";
+
     try {
-      const r = await api("/auth/login", {
-        method: "POST",
-        body: { email: emailEl.value.trim(), password: passEl.value.trim() }
-      });
+      const r = await api("/auth/login", { method: "POST", body: { email, password } });
       state.user = r.user;
       updateNav();
       setHash("#/dashboard");
       render();
     } catch (e) {
-      msgEl.textContent = "Login failed: " + e.message;
+      msg.textContent = "Login failed: " + e.message;
     }
   };
 }
@@ -238,24 +260,21 @@ function renderRegister() {
     </div>
   `;
 
-  const nameEl  = document.getElementById("name");
-  const emailEl = document.getElementById("email");
-  const passEl  = document.getElementById("password");
-  const msgEl   = document.getElementById("msg");
-
   document.getElementById("regBtn").onclick = async () => {
-    msgEl.textContent = "";
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const msg = document.getElementById("msg");
+    msg.textContent = "";
+
     try {
-      const r = await api("/auth/register", {
-        method: "POST",
-        body: { name: nameEl.value.trim(), email: emailEl.value.trim(), password: passEl.value.trim() }
-      });
+      const r = await api("/auth/register", { method: "POST", body: { name, email, password } });
       state.user = r.user;
       updateNav();
       setHash("#/dashboard");
       render();
     } catch (e) {
-      msgEl.textContent = "Register failed: " + e.message;
+      msg.textContent = "Register failed: " + e.message;
     }
   };
 }
@@ -264,12 +283,12 @@ function renderRegister() {
 async function renderDashboard() {
   appEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center;">
+      <div class="row">
         <div>
           <div class="h1">Your Levels</div>
           <div class="small">Welcome, <b>${escapeHtml(state.user?.name || "")}</b></div>
         </div>
-        <div class="row" style="gap:8px;">
+        <div class="row" style="gap:8px; justify-content:flex-end;">
           <button class="btn" id="langEn">English</button>
           <button class="btn" id="langTi">ትግርኛ</button>
         </div>
@@ -278,8 +297,16 @@ async function renderDashboard() {
     <div id="coursesWrap"></div>
   `;
 
-  document.getElementById("langEn").onclick = () => { setLang("en"); render(); };
-  document.getElementById("langTi").onclick = () => { setLang("ti"); render(); };
+  document.getElementById("langEn").onclick = async () => {
+    state.lang = setLang("en");
+    await loadCourses();
+    renderDashboard();
+  };
+  document.getElementById("langTi").onclick = async () => {
+    state.lang = setLang("ti");
+    await loadCourses();
+    renderDashboard();
+  };
 
   try {
     await loadCourses();
@@ -290,11 +317,10 @@ async function renderDashboard() {
   }
 
   const wrap = document.getElementById("coursesWrap");
-
   wrap.innerHTML = state.courses.map(c => `
     <div class="card">
-      <div class="h2">${escapeHtml(c.title || c.id)}</div>
-      <div class="p">${escapeHtml(c.intro || "")}</div>
+      <div class="h2">${escapeHtml(courseTitle(c))}</div>
+      <div class="p">${escapeHtml(courseDesc(c))}</div>
 
       <div class="row" style="justify-content:flex-start; gap:10px;">
         <button class="btn primary" data-open-course="${escapeHtml(c.id)}">Open lessons</button>
@@ -316,7 +342,7 @@ async function renderDashboard() {
     btn.onclick = () => { setHash(`#/cert/${btn.getAttribute("data-open-cert")}`); render(); };
   });
 
-  // meta: progress + exam
+  // Meta per course
   for (const c of state.courses) {
     const metaEl = document.getElementById(`dashMeta_${c.id}`);
     if (!metaEl) continue;
@@ -345,12 +371,12 @@ async function renderCourse(courseId) {
 
   appEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center;">
+      <div class="row">
         <div>
           <div class="h1">Lessons</div>
           <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
         </div>
-        <div class="row" style="gap:8px;">
+        <div class="row" style="gap:8px; justify-content:flex-end;">
           <button class="btn" id="backDash">Back</button>
           <button class="btn secondary" id="openExam">Final exam</button>
           <button class="btn" id="openCert">Certificate</button>
@@ -370,7 +396,7 @@ async function renderCourse(courseId) {
     await loadProgress(courseId);
   } catch (e) {
     document.getElementById("lessonsWrap").innerHTML =
-      `<div class="card"><div class="small">Failed: ${escapeHtml(e.message)}</div></div>`;
+      `<div class="card"><div class="small">Failed to load lessons/progress: ${escapeHtml(e.message)}</div></div>`;
     return;
   }
 
@@ -393,7 +419,7 @@ async function renderCourse(courseId) {
       const done = !!pmap[l.lessonIndex]?.completed;
       return `
         <div class="card">
-          <div class="row" style="justify-content:space-between; align-items:center;">
+          <div class="row" style="justify-content:space-between;">
             <div>
               <div class="h2">${escapeHtml(l.title || "")}</div>
               <div class="small">Lesson ${l.lessonIndex + 1} ${done ? "✅ Completed" : ""}</div>
@@ -442,6 +468,7 @@ async function renderLesson(courseId, lessonIndex) {
 
   const lessons = state.lessonsByCourse[courseId] || [];
   const lesson = lessons.find(x => x.lessonIndex === lessonIndex);
+
   if (!lesson) {
     document.getElementById("lessonCard").innerHTML = `<div class="small">Lesson not found.</div>`;
     return;
@@ -536,12 +563,12 @@ async function renderExam(courseId) {
 
   appEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center;">
+      <div class="row">
         <div>
           <div class="h1">Final Exam</div>
           <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
         </div>
-        <div class="row" style="gap:8px;">
+        <div class="row" style="gap:8px; justify-content:flex-end;">
           <button class="btn" id="backCourse">Back</button>
           <button class="btn" id="goCert">Certificate</button>
         </div>
@@ -557,10 +584,9 @@ async function renderExam(courseId) {
 
   let examData;
   try {
-    examData = await api(`/exams/${courseId}`, { method: "GET" });
+    examData = await api(`/exams/${courseId}`);
   } catch (e) {
-    document.getElementById("examCard").innerHTML =
-      `<div class="small">Failed to load exam: ${escapeHtml(e.message)}</div>`;
+    document.getElementById("examCard").innerHTML = `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
     return;
   }
 
@@ -574,23 +600,22 @@ async function renderExam(courseId) {
   `;
 
   if (!questions.length) {
-    document.getElementById("examCard").innerHTML =
-      `<div class="small">Exam not configured yet.</div>`;
+    document.getElementById("examCard").innerHTML = `<div class="small">Exam not configured yet.</div>`;
     return;
   }
 
   const qHtml = questions.map((q, i) => {
     const opts = (q.options || []).map((opt, oi) => `
-      <label class="quizOption" style="display:flex; gap:10px; align-items:flex-start; margin:8px 0;">
+      <label class="quizOption">
         <input type="radio" name="q_${i}" value="${oi}" />
-        <div>${escapeHtml(opt)}</div>
+        <div><b>${escapeHtml(opt)}</b></div>
       </label>
     `).join("");
 
     return `
-      <div class="card" style="background:rgba(255,255,255,.03); margin-top:10px;">
+      <div class="card" style="background:rgba(255,255,255,.03)">
         <div class="h2" style="font-size:16px;">${i + 1}. ${escapeHtml(q.text || "")}</div>
-        <div style="height:6px"></div>
+        <div style="height:8px"></div>
         ${opts}
       </div>
     `;
@@ -598,8 +623,8 @@ async function renderExam(courseId) {
 
   document.getElementById("examCard").innerHTML = `
     <div class="small">Answer all questions, then submit.</div>
+    <div style="height:10px"></div>
     ${qHtml}
-    <div style="height:12px"></div>
     <button class="btn primary" id="submitExam">Submit Exam</button>
     <div class="small" id="examMsg" style="margin-top:10px;"></div>
   `;
@@ -642,12 +667,12 @@ async function renderCert(courseId) {
 
   appEl.innerHTML = `
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center;">
+      <div class="row">
         <div>
           <div class="h1">Certificate</div>
           <div class="small">Course: <b>${escapeHtml(courseId)}</b></div>
         </div>
-        <div class="row" style="gap:8px;">
+        <div class="row" style="gap:8px; justify-content:flex-end;">
           <button class="btn" id="backCourse">Back</button>
           <button class="btn secondary" id="openExam">Final exam</button>
         </div>
@@ -663,17 +688,15 @@ async function renderCert(courseId) {
 
   let status;
   try {
-    status = await api(`/certificates/status/${courseId}`, { method: "GET" });
+    status = await loadCertificateStatus(courseId);
   } catch (e) {
-    document.getElementById("certCard").innerHTML =
-      `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
+    document.getElementById("certCard").innerHTML = `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
     return;
   }
 
   const top = document.getElementById("certTop");
   top.innerHTML = `Lessons completed: <b>${status.completedLessons}</b> / ${status.totalLessons} • Exam passed: <b>${status.examPassed ? "YES ✅" : "NO ❌"}</b>`;
 
-  // Already issued
   if (status.issued) {
     document.getElementById("certCard").innerHTML = `
       <div class="h2">Certificate issued ✅</div>
@@ -686,14 +709,13 @@ async function renderCert(courseId) {
     return;
   }
 
-  // Not eligible yet
   if (!status.eligible) {
     document.getElementById("certCard").innerHTML = `
       <div class="h2">Not eligible yet 🔒</div>
-      <div class="small" style="margin-top:8px;">
+      <div class="small">
         To unlock the certificate you must:
-        <div style="margin-top:6px;">${status.completedLessons >= status.totalLessons ? "✅" : "⬜"} Complete all lessons</div>
-        <div style="margin-top:6px;">${status.examPassed ? "✅" : "⬜"} Pass the final exam</div>
+        <div>${status.completedLessons >= status.totalLessons ? "✅" : "⬜"} Complete all lessons</div>
+        <div>${status.examPassed ? "✅" : "⬜"} Pass the final exam</div>
         <div style="margin-top:10px;">Once you pass the exam, come back here and click <b>Claim Certificate</b>.</div>
       </div>
       <div style="height:12px"></div>
@@ -703,7 +725,6 @@ async function renderCert(courseId) {
     return;
   }
 
-  // Eligible - can claim
   document.getElementById("certCard").innerHTML = `
     <div class="h2">You are eligible ✅</div>
     <div class="small">Click below to claim your certificate.</div>
@@ -715,13 +736,8 @@ async function renderCert(courseId) {
   document.getElementById("claimBtn").onclick = async () => {
     const m = document.getElementById("claimMsg");
     m.textContent = "Claiming...";
-
     try {
-      await api(`/certificates/claim`, {
-        method: "POST",
-        body: { courseId }
-      });
-
+      await claimCertificate(courseId);
       m.textContent = "Claimed ✅ Opening PDF...";
       window.open(`${API_BASE}/certificates/${courseId}/pdf`, "_blank");
       setTimeout(() => renderCert(courseId), 400);
@@ -733,7 +749,9 @@ async function renderCert(courseId) {
 
 // ================= BOOT =================
 (function boot() {
+  // default hash
   if (!location.hash) setHash("#/dashboard");
+  // load saved language
   state.lang = getLang();
   updateNav();
   render();
