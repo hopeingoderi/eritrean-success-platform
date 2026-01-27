@@ -5,38 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Eritrean Success Journey • Student</title>
 
-  <!-- IMPORTANT: keep these as ./ so they work inside /student/ -->
+  <!-- Must be ./styles.css for /student/ -->
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-
-<header class="topbar">
-  <div class="brand">
-    <div class="logo">ER</div>
-    <div>
-      <div class="title">Eritrean Success Journey</div>
-      <div class="subtitle">Learn • Grow • Believe • Succeed</div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">ER</div>
+      <div>
+        <div class="title">Eritrean Success Journey</div>
+        <div class="subtitle">Learn • Grow • Believe • Succeed</div>
+      </div>
     </div>
-  </div>
 
-  <nav id="nav" class="nav">
-    <button class="btn" onclick="go('login')">Login</button>
-    <button class="btn" onclick="go('register')">Register</button>
-    <button class="btn danger" onclick="logout()">Logout</button>
-  </nav>
-</header>
+    <nav id="nav" class="nav">
+      <button class="btn" onclick="go('login')">Login</button>
+      <button class="btn" onclick="go('register')">Register</button>
+      <button class="btn danger" onclick="logout()">Logout</button>
+    </nav>
+  </header>
 
-<main class="container">
-  <div id="app"></div>
-  <footer class="footer">
-    © <span id="year"></span> Eritrean Success Journey
-  </footer>
-</main>
+  <main class="container">
+    <div id="app"></div>
 
-<script>
-  document.getElementById("year").textContent = new Date().getFullYear();
-</script>
+    <footer class="footer">
+      © <span id="year"></span> Eritrean Success Journey
+    </footer>
+  </main>
 
-<script src="./app.js"></script>
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+
+  <script src="./app.js"></script>
 </body>
 </html>
