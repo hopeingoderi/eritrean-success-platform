@@ -9,113 +9,125 @@
 </head>
 
 <body>
-  <!-- TOPBAR -->
   <header class="topbar">
-    <a class="brand" href="./" aria-label="Go to landing page">
+    <a class="brand" href="./">
       <div class="logo">ER</div>
-      <div class="brandText">
+      <div>
         <div class="title">Eritrean Success Journey</div>
         <div class="subtitle">Learn • Grow • Believe • Succeed</div>
       </div>
     </a>
 
     <nav class="nav">
-      <button class="btn" id="langEn">EN</button>
-      <button class="btn" id="langTi">ትግርኛ</button>
+      <div class="pill-group">
+        <button class="btn ghost" id="langEn">EN</button>
+        <button class="btn ghost" id="langTi">ትግርኛ</button>
+      </div>
 
-      <a class="btn" href="./student/#/login" id="loginBtn">Login</a>
-      <a class="btn primary" href="./student/#/register" id="startBtn">Get Started</a>
+      <a class="btn" href="./student/#/login" id="navLogin">Login</a>
+      <a class="btn primary" href="./student/#/register" id="navGetStarted">Get Started</a>
     </nav>
   </header>
 
-  <!-- HERO -->
   <main class="container">
+    <!-- HERO -->
     <section class="hero">
-      <div class="heroInner">
-        <h1 class="heroTitle" id="heroTitle">
-          Rise with Purpose.<br />Build with Faith.
-        </h1>
-
-        <p class="heroText" id="heroText">
+      <div class="hero-inner">
+        <h1 class="hero-title" id="heroTitle">Rise with Purpose.<br/>Build with Faith.</h1>
+        <p class="hero-sub" id="heroSub">
           Eritrean Success Journey is a structured path to mindset, discipline, leadership, and long-term success —
           built on belief, action, and consistency.
         </p>
 
-        <div class="heroCtas">
+        <div class="hero-actions">
+          <!-- Start Your Journey -> REGISTER ✅ -->
           <a class="btn primary" href="./student/#/register" id="ctaStart">Start Your Journey</a>
           <a class="btn secondary" href="./student/#/login" id="ctaLogin">Student Login</a>
         </div>
-
-        <div class="heroCard">
-          <div class="h2" id="whyTitle">Why this journey exists</div>
-          <p class="p" id="whyText">
-            Many students have talent — but lack direction. This platform gives structure:
-            lessons, reflection, progress tracking, exams, and certificates.
-          </p>
-        </div>
       </div>
+
+      <div class="hero-glow" aria-hidden="true"></div>
     </section>
 
-    <!-- HIGHLIGHTS -->
-    <section class="section">
-      <div class="sectionTitle" id="highTitle">What you get</div>
-
-      <div class="grid3">
-        <div class="card">
-          <div class="h2" id="h1t">Clear Roadmap</div>
-          <p class="p" id="h1p">Foundation → Growth → Excellence. Step-by-step progress, not random motivation.</p>
-        </div>
-        <div class="card">
-          <div class="h2" id="h2t">Learn + Task + Reflection</div>
-          <p class="p" id="h2p">Every lesson builds understanding, action, and deep thinking — the real growth loop.</p>
-        </div>
-        <div class="card">
-          <div class="h2" id="h3t">Exams + Certificates</div>
-          <p class="p" id="h3p">Finish a level, prove mastery with a final exam, and unlock your certificate.</p>
-        </div>
-      </div>
+    <!-- WHY -->
+    <section class="card">
+      <h2 class="h2" id="whyTitle">Why this journey exists</h2>
+      <p class="p" id="whyText">
+        Many students have talent — but lack direction. This platform gives structure: lessons, reflection, progress tracking,
+        exams, and certificates.
+      </p>
     </section>
 
-    <!-- JOURNEY -->
-    <section class="section">
-      <div class="card">
-        <div class="h2" id="journeyTitle">The Journey</div>
-        <p class="p" id="journeyText">
-          <b>Foundation</b> → <b>Growth</b> → <b>Excellence</b> — a clear roadmap to build confidence, discipline, and leadership.
-        </p>
+    <!-- THE JOURNEY -->
+    <section class="card">
+      <h2 class="h2" id="journeyTitle">The Journey</h2>
+      <p class="p" id="journeyText">
+        <b>Foundation</b> → <b>Growth</b> → <b>Excellence</b> — a clear roadmap to build confidence, discipline, and leadership.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-badge">1</div>
+          <div>
+            <div class="step-title" id="step1Title">Foundation</div>
+            <div class="small" id="step1Text">Mindset, study basics, confidence, and daily habits.</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-badge">2</div>
+          <div>
+            <div class="step-title" id="step2Title">Growth</div>
+            <div class="small" id="step2Text">Consistency, communication, discipline, and focus.</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-badge">3</div>
+          <div>
+            <div class="step-title" id="step3Title">Excellence</div>
+            <div class="small" id="step3Text">Leadership, integrity, vision, and long-term success.</div>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- VOICES -->
-    <section class="section">
-      <div class="sectionTitle" id="voicesTitle">Voices of Growth</div>
+    <section class="card">
+      <h2 class="h2" id="voicesTitle">Voices of Growth</h2>
 
       <div class="grid3">
-        <div class="card quote">
-          <p class="p" id="q1">“I stopped waiting for motivation. Now I study with discipline.”</p>
-          <div class="small">Student</div>
+        <div class="quote">
+          <div class="p">“I stopped waiting for motivation. Now I study with discipline.”</div>
+          <div class="small"><b>Student</b></div>
         </div>
-        <div class="card quote">
-          <p class="p" id="q2">“The reflection part changed me. I started thinking deeper.”</p>
-          <div class="small">Student</div>
+
+        <div class="quote">
+          <div class="p">“The reflection part changed me. I started thinking deeper.”</div>
+          <div class="small"><b>Student</b></div>
         </div>
-        <div class="card quote">
-          <p class="p" id="q3">“It feels like a real journey — not just random lessons.”</p>
-          <div class="small">Student</div>
+
+        <div class="quote">
+          <div class="p">“It feels like a real journey — not just random lessons.”</div>
+          <div class="small"><b>Student</b></div>
         </div>
       </div>
     </section>
 
     <!-- FOUNDER -->
-    <section class="section">
-      <div class="card founder">
-        <div class="h2" id="founderTitle">A Message from the Founder</div>
-        <p class="p" id="founderText">
-          I created this journey because success is not an accident. It is built with belief, discipline, and daily effort.
-          <br /><br />
-          This platform exists to help you rise with purpose and walk your path with faith — one lesson at a time.
-        </p>
-        <div class="small">— Michael Afewerki</div>
+    <section class="card founder">
+      <h2 class="h2" id="founderTitle">A Message from the Founder</h2>
+      <p class="p" id="founderText">
+        I created this journey because success is not an accident. It is built with belief, discipline, and daily effort.
+      </p>
+      <p class="p" id="founderText2">
+        This platform exists to help you rise with purpose and walk your path with faith — one lesson at a time.
+      </p>
+      <div class="small" id="founderName">— Michael Afewerki</div>
+
+      <div class="founder-actions">
+        <a class="btn primary" href="./student/#/register" id="founderCta">Join the Journey</a>
+        <a class="btn" href="./student/#/login">Already a student? Login</a>
       </div>
     </section>
 
@@ -125,114 +137,27 @@
   </main>
 
   <script>
-    // Year
     document.getElementById("year").textContent = new Date().getFullYear();
 
-    // Language (simple landing copy switch)
-    const STR = {
-      en: {
-        heroTitle: "Rise with Purpose.<br />Build with Faith.",
-        heroText:
-          "Eritrean Success Journey is a structured path to mindset, discipline, leadership, and long-term success — built on belief, action, and consistency.",
-        whyTitle: "Why this journey exists",
-        whyText:
-          "Many students have talent — but lack direction. This platform gives structure: lessons, reflection, progress tracking, exams, and certificates.",
-        highTitle: "What you get",
-        h1t: "Clear Roadmap",
-        h1p: "Foundation → Growth → Excellence. Step-by-step progress, not random motivation.",
-        h2t: "Learn + Task + Reflection",
-        h2p: "Every lesson builds understanding, action, and deep thinking — the real growth loop.",
-        h3t: "Exams + Certificates",
-        h3p: "Finish a level, prove mastery with a final exam, and unlock your certificate.",
-        journeyTitle: "The Journey",
-        journeyText:
-          "<b>Foundation</b> → <b>Growth</b> → <b>Excellence</b> — a clear roadmap to build confidence, discipline, and leadership.",
-        voicesTitle: "Voices of Growth",
-        q1: "“I stopped waiting for motivation. Now I study with discipline.”",
-        q2: "“The reflection part changed me. I started thinking deeper.”",
-        q3: "“It feels like a real journey — not just random lessons.”",
-        founderTitle: "A Message from the Founder",
-        founderText:
-          "I created this journey because success is not an accident. It is built with belief, discipline, and daily effort.<br /><br />This platform exists to help you rise with purpose and walk your path with faith — one lesson at a time.",
-        ctaStart: "Start Your Journey",
-        ctaLogin: "Student Login",
-        startBtn: "Get Started",
-        loginBtn: "Login",
-      },
-      ti: {
-        heroTitle: "ብዕላማ ተነስ።<br />ብእምነት ሃንጽ።",
-        heroText:
-          "Eritrean Success Journey መንገዲ ስርዓት ንሓሳብ፣ ትዕግስቲ፣ መሪነት፣ ንዘለዓለም ስኬት እዩ — ብእምነት፣ ተግባር፣ ቀጻሊነት ዝተሰረተ።",
-        whyTitle: "እዚ ጉዕዞ ስለምንታይ እዩ",
-        whyText:
-          "ብዙሓት ተማሃሮ ብችሎታ ኣለዎም — ግን መደብ ይጎድሎም። እዚ መድረኽ ስርዓት ይሃብ: ትምህርቲ፣ ምርኣይ (Reflection)፣ ኣብ እዋን ምክትታል እድገት፣ ፈተናታት፣ ምስክርነት።",
-        highTitle: "እትረክቦ",
-        h1t: "ግልጺ መደብ",
-        h1p: "Foundation → Growth → Excellence. እስከ እስከ እትደግፍ መንገዲ።",
-        h2t: "Learn + Task + Reflection",
-        h2p: "ነፍሲ ትምህርቲ ፍልጠት፣ ተግባር፣ ጥልቂ ሓሳብ ይህንጽ።",
-        h3t: "ፈተና + ምስክርነት",
-        h3p: "ደረጃ ምስ ወዳእካ ፈተና ትወስድ እና ምስክርነት ትክፈት።",
-        journeyTitle: "ጉዕዞና",
-        journeyText:
-          "<b>Foundation</b> → <b>Growth</b> → <b>Excellence</b> — ንእምነት፣ ትዕግስቲ፣ መሪነት ግልጺ መንገዲ።",
-        voicesTitle: "ድምጺ እድገት",
-        q1: "“ምትጽባይ ሞቲቨሽን ደው ኣቢለ. ሕጂ ብትዕግስቲ እምሃር.”",
-        q2: "“Reflection ቀይሮኒ. ጥልቂ እንተሓሳብኩ ጀሚረ.”",
-        q3: "“ከም ሓቀኛ ጉዕዞ ይስምዕ — ኣይኮነን ዝተበታተነ ትምህርቲ.”",
-        founderTitle: "መልእኽቲ ካብ መጀመርታ",
-        founderText:
-          "ስኬት ዕላማ ኣይኮነን ብኣጋጣሚ. ብእምነት፣ ትዕግስቲ፣ ዕለታዊ ጻዕሪ ይህንጽ።<br /><br />እዚ መድረኽ ብዕላማ ንኽትነስእን ብእምነት ንኽትምራሕን — ትምህርቲ ትምህርቲ እዩ።",
-        ctaStart: "ጀምር ጉዕዞኻ",
-        ctaLogin: "መእተዊ ተማሃሪ",
-        startBtn: "ጀምር",
-        loginBtn: "እተው",
-      }
+    // simple language toggle on landing page (optional text swap)
+    const lang = localStorage.getItem("landingLang") || "en";
+    const setLang = (v) => {
+      localStorage.setItem("landingLang", v);
+      // keep it light: only swap key headings for now
+      const isTi = v === "ti";
+      document.getElementById("heroTitle").innerHTML = isTi
+        ? "ብዕላማ ተነስ።<br/>ብእምነት ሃንጽ።"
+        : "Rise with Purpose.<br/>Build with Faith.";
+
+      document.getElementById("whyTitle").textContent = isTi ? "እዚ ጉዕዞ ስለምንታይ ኣሎ" : "Why this journey exists";
+      document.getElementById("journeyTitle").textContent = isTi ? "ጉዕዞኻ" : "The Journey";
+      document.getElementById("voicesTitle").textContent = isTi ? "ድምጺ ዕቤት" : "Voices of Growth";
+      document.getElementById("founderTitle").textContent = isTi ? "መልእኽቲ ካብ መስራቲ" : "A Message from the Founder";
     };
 
-    function applyLang(lang) {
-      localStorage.setItem("lang", lang);
-      const t = STR[lang] || STR.en;
-
-      const map = {
-        heroTitle: "heroTitle",
-        heroText: "heroText",
-        whyTitle: "whyTitle",
-        whyText: "whyText",
-        highTitle: "highTitle",
-        h1t: "h1t",
-        h1p: "h1p",
-        h2t: "h2t",
-        h2p: "h2p",
-        h3t: "h3t",
-        h3p: "h3p",
-        journeyTitle: "journeyTitle",
-        journeyText: "journeyText",
-        voicesTitle: "voicesTitle",
-        q1: "q1",
-        q2: "q2",
-        q3: "q3",
-        founderTitle: "founderTitle",
-        founderText: "founderText",
-        ctaStart: "ctaStart",
-        ctaLogin: "ctaLogin",
-        startBtn: "startBtn",
-        loginBtn: "loginBtn",
-      };
-
-      Object.keys(map).forEach(k => {
-        const el = document.getElementById(map[k]);
-        if (!el) return;
-        if (k === "heroTitle" || k === "journeyText" || k === "founderText") el.innerHTML = t[k];
-        else el.textContent = t[k];
-      });
-    }
-
-    const saved = localStorage.getItem("lang");
-    applyLang(saved === "ti" ? "ti" : "en");
-
-    document.getElementById("langEn").onclick = () => applyLang("en");
-    document.getElementById("langTi").onclick = () => applyLang("ti");
+    setLang(lang);
+    document.getElementById("langEn").onclick = () => setLang("en");
+    document.getElementById("langTi").onclick = () => setLang("ti");
   </script>
 </body>
 </html>
