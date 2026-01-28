@@ -5,8 +5,6 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 
-// If you already use a PG session store, keep it.
-// If connect-pg-simple is installed, this will persist sessions across restarts.
 let PgSession = null;
 try {
   PgSession = require("connect-pg-simple")(session);
@@ -16,38 +14,50 @@ try {
 
 const app = express();
 
-// IMPORTANT for Render / proxies (so secure cookies work)
+// Render / reverse proxy (required for secure cookies + correct protocol)
 app.set("trust proxy", 1);
 
-// ---------- CORS ----------
+// ---------- ENV ----------
+const isProd = process.env.NODE_ENV === "production";
+
+// Comma-separated list in Render env var:
+// CORS_ORIGIN=https://riseeritrea.com,https://www.riseeritrea.com
 const corsOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
-  .map((s) => s.trim())
+  .map(s => s.trim())
   .filter(Boolean);
 
-app.use(
-  cors({
-    origin: function (origin, cb) {
-      // allow tools / curl (no origin)
-      if (!origin) return cb(null, true);
+// ---------- CORS (must be before routes) ----------
+const corsOptions = {
+  origin: function (origin, cb) {
+    // Allow non-browser tools (curl/postman) with no origin
+    if (!origin) return cb(null, true);
 
-      // allow if in list
-      if (corsOrigins.length === 0 || corsOrigins.includes(origin)) return cb(null, true);
+    // If no list provided, block-by-default in production (safer),
+    // allow all in dev (optional behavior)
+    if (corsOrigins.length === 0) {
+      if (!isProd) return cb(null, true);
+      return cb(new Error("CORS blocked (no CORS_ORIGIN set): " + origin));
+    }
 
-      return cb(new Error("CORS blocked: " + origin));
-    },
-    credentials: true,
-  })
-);
+    if (corsOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked: " + origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+// IMPORTANT: handle preflight for ALL routes
+app.options("*", cors(corsOptions));
+app.use(cors(corsOptions));
 
 app.use(express.json({ limit: "2mb" }));
 
 // ---------- SESSION ----------
-const isProd = process.env.NODE_ENV === "production";
-
-// cookie domain is OPTIONAL; only use if you set it.
-// Example: SESSION_DOMAIN=.riseeritrea.com
 const cookieDomain = process.env.SESSION_DOMAIN || undefined;
+// recommended for subdomain cookies: .riseeritrea.com
+// SESSION_DOMAIN=.riseeritrea.com
 
 const sessionOptions = {
   name: "sid",
@@ -57,14 +67,13 @@ const sessionOptions = {
   proxy: true,
   cookie: {
     httpOnly: true,
-    secure: isProd,                // MUST be true on https (Render prod)
-    sameSite: isProd ? "none" : "lax", // "none" is safest for subdomain setups with fetch+credentials
-    domain: cookieDomain,          // optional (only if you set SESSION_DOMAIN)
-    maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
+    secure: isProd,                     // true on https
+    sameSite: isProd ? "none" : "lax",  // needed for cross-subdomain + fetch credentials
+    domain: cookieDomain,               // optional
+    maxAge: 1000 * 60 * 60 * 24 * 7,    // 7 days
   },
 };
 
-// Use PG session store if available + DATABASE_URL exists
 if (PgSession && process.env.DATABASE_URL) {
   sessionOptions.store = new PgSession({
     conString: process.env.DATABASE_URL,
@@ -74,10 +83,10 @@ if (PgSession && process.env.DATABASE_URL) {
 
 app.use(session(sessionOptions));
 
-// ---- Language middleware (EN/TI) ----
+// ---- Language middleware ----
 app.use((req, res, next) => {
   const q = String(req.query.lang || "").toLowerCase();
-  req.lang = (q === "ti" || q === "en") ? q : "en"; // default en
+  req.lang = q === "ti" || q === "en" ? q : "en";
   next();
 });
 
@@ -92,25 +101,25 @@ app.use("/api/exams", require("./routes/exams"));
 app.use("/api/certificates", require("./routes/certificates"));
 app.use("/api/admin", require("./routes/admin"));
 
-// Optional dev routes (only in development)
-if (!isProd) {
-  try {
-    app.use("/api/dev", require("./routes/dev"));
-  } catch {}
-}
-
-// ---------- ERROR HANDLER ----------
+// ---------- ERROR HANDLER (keep CORS headers) ----------
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
-  res.status(500).json({ error: "Server error" });
+
+  // Ensure CORS headers even on errors
+  const origin = req.headers.origin;
+  if (origin && corsOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+
+  res.status(500).json({ error: err.message || "Server error" });
 });
 
 // ---------- START ----------
 const PORT = process.env.PORT || 4000;
-console.log("Booting API. NODE_ENV =", process.env.NODE_ENV);
-console.log("Has DATABASE_URL =", !!process.env.DATABASE_URL);
-console.log("PORT from env =", PORT);
-
 app.listen(PORT, () => {
-  console.log(`API running on port ${PORT}`);
+  console.log("API running on port", PORT);
+  console.log("NODE_ENV =", process.env.NODE_ENV);
+  console.log("CORS_ORIGIN =", process.env.CORS_ORIGIN);
+  console.log("SESSION_DOMAIN =", process.env.SESSION_DOMAIN);
 });
