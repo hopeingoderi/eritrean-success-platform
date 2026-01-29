@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Eritrean Success Journey</title>
+  <meta name="description" content="Learn • Grow • Believe • Succeed — a structured journey for mindset, discipline, leadership, and long-term success." />
 
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -14,14 +15,14 @@
       <div class="logo">ER</div>
       <div>
         <div class="title">Eritrean Success Journey</div>
-        <div class="subtitle">Learn • Grow • Believe • Succeed</div>
+        <div class="subtitle" id="brandSubtitle">Learn • Grow • Believe • Succeed</div>
       </div>
     </a>
 
     <nav class="nav">
       <div class="pill-group">
-        <button class="btn ghost" id="langEn">EN</button>
-        <button class="btn ghost" id="langTi">ትግርኛ</button>
+        <button class="btn ghost" id="langEn" aria-label="English">EN</button>
+        <button class="btn ghost" id="langTi" aria-label="Tigrinya">ትግርኛ</button>
       </div>
 
       <a class="btn" href="./student/#/login" id="navLogin">Login</a>
@@ -33,16 +34,33 @@
     <!-- HERO -->
     <section class="hero">
       <div class="hero-inner">
+        <span class="badge" id="heroBadge">New • Built for students</span>
+
         <h1 class="hero-title" id="heroTitle">Rise with Purpose.<br/>Build with Faith.</h1>
+
         <p class="hero-sub" id="heroSub">
-          Eritrean Success Journey is a structured path to mindset, discipline, leadership, and long-term success —
-          built on belief, action, and consistency.
+          A structured path to mindset, discipline, leadership, and long-term success — built on belief, action, and consistency.
         </p>
 
         <div class="hero-actions">
-          <!-- Start Your Journey -> REGISTER ✅ -->
           <a class="btn primary" href="./student/#/register" id="ctaStart">Start Your Journey</a>
           <a class="btn secondary" href="./student/#/login" id="ctaLogin">Student Login</a>
+          <a class="btn" href="#founder" id="ctaFounder">Founder Message</a>
+        </div>
+
+        <div class="hero-mini" id="heroMini">
+          <div class="mini-card">
+            <div class="mini-title" id="mini1Title">3 Levels</div>
+            <div class="small" id="mini1Text">Foundation → Growth → Excellence</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-title" id="mini2Title">Certificates</div>
+            <div class="small" id="mini2Text">Earn proof of progress</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-title" id="mini3Title">Community</div>
+            <div class="small" id="mini3Text">Learn with purpose</div>
+          </div>
         </div>
       </div>
 
@@ -92,72 +110,288 @@
       </div>
     </section>
 
-    <!-- VOICES -->
+    <!-- CERTIFICATE WOW -->
     <section class="card">
-      <h2 class="h2" id="voicesTitle">Voices of Growth</h2>
+      <div class="row">
+        <div>
+          <h2 class="h2" id="certTitle">Certificate “WOW” format</h2>
+          <p class="p" id="certText">
+            Students earn certificates after exams — designed to feel real, shareable, and motivating.
+          </p>
 
-      <div class="grid3">
-        <div class="quote">
-          <div class="p">“I stopped waiting for motivation. Now I study with discipline.”</div>
-          <div class="small"><b>Student</b></div>
+          <div class="actions">
+            <a class="btn primary" href="./student/#/login" id="certCta">View Certificates</a>
+            <a class="btn" href="#youtube" id="ytCta2">Watch on YouTube</a>
+          </div>
         </div>
 
-        <div class="quote">
-          <div class="p">“The reflection part changed me. I started thinking deeper.”</div>
-          <div class="small"><b>Student</b></div>
-        </div>
-
-        <div class="quote">
-          <div class="p">“It feels like a real journey — not just random lessons.”</div>
-          <div class="small"><b>Student</b></div>
+        <div class="cert-preview" aria-hidden="true">
+          <div class="cert-top">
+            <div class="cert-logo">ER</div>
+            <div class="cert-title" id="certPreviewTitle">Certificate of Achievement</div>
+          </div>
+          <div class="cert-body">
+            <div class="cert-line" id="certPreviewLine1">This certifies that</div>
+            <div class="cert-name">Student Name</div>
+            <div class="cert-line" id="certPreviewLine2">has completed Level 1: Foundation</div>
+            <div class="cert-sign">
+              <div class="small" id="certFounder">Founder</div>
+              <div class="sig">Michael Afewerki</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
+    <!-- PASSWORD HELP -->
+    <section class="card">
+      <h2 class="h2" id="helpTitle">Forgot your password?</h2>
+      <p class="p" id="helpText">
+        Don’t worry. Reset it in seconds and continue your journey.
+      </p>
+      <!-- Replace this link with your real route when you add it -->
+      <a class="btn secondary" href="./student/#/forgot" id="helpCta">Reset Password</a>
+      <div class="small note" id="helpNote">
+        If you haven’t created this page yet, we’ll build it next.
+      </div>
+    </section>
+
+    <!-- YOUTUBE -->
+    <section class="card" id="youtube">
+      <h2 class="h2" id="ytTitle">YouTube Channel</h2>
+      <p class="p" id="ytText">
+        Short lessons, motivation, and guidance — to help you stay consistent even on hard days.
+      </p>
+      <!-- Replace with your real YouTube link -->
+      <a class="btn primary" href="https://youtube.com" target="_blank" rel="noopener" id="ytCta">Open YouTube</a>
+    </section>
+
     <!-- FOUNDER -->
-    <section class="card founder">
+    <section class="card founder" id="founder">
       <h2 class="h2" id="founderTitle">A Message from the Founder</h2>
+
       <p class="p" id="founderText">
-        I created this journey because success is not an accident. It is built with belief, discipline, and daily effort.
+        I created this journey because success is not luck. It is built — step by step — with belief, discipline, and daily effort.
       </p>
+
       <p class="p" id="founderText2">
-        This platform exists to help you rise with purpose and walk your path with faith — one lesson at a time.
+        If you fall, stand again. If you feel weak, breathe and continue. Your future is watching what you do today.
       </p>
+
       <div class="small" id="founderName">— Michael Afewerki</div>
 
       <div class="founder-actions">
         <a class="btn primary" href="./student/#/register" id="founderCta">Join the Journey</a>
-        <a class="btn" href="./student/#/login">Already a student? Login</a>
+        <a class="btn" href="./student/#/login" id="founderLogin">Already a student? Login</a>
       </div>
     </section>
 
     <footer class="footer">
-      © <span id="year"></span> Eritrean Success Journey
+      ©️ <span id="year"></span> Eritrean Success Journey
     </footer>
   </main>
 
   <script>
+    // year
     document.getElementById("year").textContent = new Date().getFullYear();
 
-    // simple language toggle on landing page (optional text swap)
+    // language
     const lang = localStorage.getItem("landingLang") || "en";
-    const setLang = (v) => {
-      localStorage.setItem("landingLang", v);
-      // keep it light: only swap key headings for now
-      const isTi = v === "ti";
-      document.getElementById("heroTitle").innerHTML = isTi
-        ? "ብዕላማ ተነስ።<br/>ብእምነት ሃንጽ።"
-        : "Rise with Purpose.<br/>Build with Faith.";
 
-      document.getElementById("whyTitle").textContent = isTi ? "እዚ ጉዕዞ ስለምንታይ ኣሎ" : "Why this journey exists";
-      document.getElementById("journeyTitle").textContent = isTi ? "ጉዕዞኻ" : "The Journey";
-      document.getElementById("voicesTitle").textContent = isTi ? "ድምጺ ዕቤት" : "Voices of Growth";
-      document.getElementById("founderTitle").textContent = isTi ? "መልእኽቲ ካብ መስራቲ" : "A Message from the Founder";
+    const t = {
+      en: {
+        brandSubtitle: "Learn • Grow • Believe • Succeed",
+        heroBadge: "New • Built for students",
+        heroTitle: "Rise with Purpose.<br/>Build with Faith.",
+        heroSub:
+          "A structured path to mindset, discipline, leadership, and long-term success — built on belief, action, and consistency.",
+        ctaStart: "Start Your Journey",
+        ctaLogin: "Student Login",
+        ctaFounder: "Founder Message",
+
+        mini1Title: "3 Levels",
+        mini1Text: "Foundation → Growth → Excellence",
+        mini2Title: "Certificates",
+        mini2Text: "Earn proof of progress",
+        mini3Title: "Community",
+        mini3Text: "Learn with purpose",
+
+        whyTitle: "Why this journey exists",
+        whyText:
+          "Many students have talent — but lack direction. This platform gives structure: lessons, reflection, progress tracking, exams, and certificates.",
+
+        journeyTitle: "The Journey",
+        journeyText:
+          "<b>Foundation</b> → <b>Growth</b> → <b>Excellence</b> — a clear roadmap to build confidence, discipline, and leadership.",
+
+        step1Title: "Foundation",
+        step1Text: "Mindset, study basics, confidence, and daily habits.",
+        step2Title: "Growth",
+        step2Text: "Consistency, communication, discipline, and focus.",
+        step3Title: "Excellence",
+        step3Text: "Leadership, integrity, vision, and long-term success.",
+
+        certTitle: "Certificate “WOW” format",
+        certText:
+          "Students earn certificates after exams — designed to feel real, shareable, and motivating.",
+        certCta: "View Certificates",
+        certPreviewTitle: "Certificate of Achievement",
+        certPreviewLine1: "This certifies that",
+        certPreviewLine2: "has completed Level 1: Foundation",
+        certFounder: "Founder",
+
+        helpTitle: "Forgot your password?",
+        helpText: "Don’t worry. Reset it in seconds and continue your journey.",
+        helpCta: "Reset Password",
+        helpNote: "If you haven’t created this page yet, we’ll build it next.",
+
+        ytTitle: "YouTube Channel",
+        ytText:
+          "Short lessons, motivation, and guidance — to help you stay consistent even on hard days.",
+        ytCta: "Open YouTube",
+
+        founderTitle: "A Message from the Founder",
+        founderText:
+          "I created this journey because success is not luck. It is built — step by step — with belief, discipline, and daily effort.",
+        founderText2:
+          "If you fall, stand again. If you feel weak, breathe and continue. Your future is watching what you do today.",
+        founderName: "— Michael Afewerki",
+        founderCta: "Join the Journey",
+        founderLogin: "Already a student? Login",
+
+        navLogin: "Login",
+        navGetStarted: "Get Started"
+      },
+      ti: {
+        brandSubtitle: "ተማሃር • ዕቤት • እምነት • ዕውቀት",
+        heroBadge: "ሓድሽ • ንተማሃሮ ተሰሪሑ",
+        heroTitle: "ብዕላማ ተነስ።<br/>ብእምነት ሃንጽ።",
+        heroSub:
+          "ንሓሳብ፣ ስርዓት፣ መሪሕነት እና ንዘላለም ስኬት ዝወስድ ተስፋ ዘለዎ መንገዲ — ብእምነትን ተግባርን ብትእግስትን።",
+        ctaStart: "ጉዕዞኻ ጀምር",
+        ctaLogin: "መእተዊ ተማሃሪ",
+        ctaFounder: "መልእኽቲ መስራቲ",
+
+        mini1Title: "3 ደረጃ",
+        mini1Text: "መሰረት → ዕቤት → ብልጽግና",
+        mini2Title: "ማስረጃታት",
+        mini2Text: "መርኣያ ዕቤት ኣንጻር",
+        mini3Title: "ማሕበረሰብ",
+        mini3Text: "ብዕላማ ተማሃር",
+
+        whyTitle: "እዚ ጉዕዞ ስለምንታይ ኣሎ",
+        whyText:
+          "ብዙሓት ተማሃሮ ክእለት ኣለዎም — ግን መሪሕነት/መስመር ይጐድሎም። እዚ መድረኽ ስርዓት ይሃብ: ትምህርቲ፣ ምርኣይ ሓሳብ፣ ምክትታል ዕቤት፣ ፈተናታት እና ማስረጃታት።",
+
+        journeyTitle: "ጉዕዞኻ",
+        journeyText:
+          "<b>መሰረት</b> → <b>ዕቤት</b> → <b>ብልጽግና</b> — ንእምነት፣ ስርዓትን መሪሕነትን ዝሃንጽ ግልጺ መንገዲ።",
+
+        step1Title: "መሰረት",
+        step1Text: "ሓሳብ፣ መሰረታት ትምህርቲ፣ እምነትን ልምድታትን።",
+        step2Title: "ዕቤት",
+        step2Text: "ትእግስቲ፣ ርክብ ሰብ፣ ስርዓትን ምትካእን።",
+        step3Title: "ብልጽግና",
+        step3Text: "መሪሕነት፣ ትክክልነት፣ ራእይን ንዘላለም ስኬትን።",
+
+        certTitle: "“WOW” ቅድመ-ቅርጺ ማስረጃ",
+        certText:
+          "ተማሃሮ ድሕሪ ፈተና ማስረጃ ይቐበሉ — ንምክፋል ብርቱዕ ዝስማዕ ተዘጋጅኡ።",
+        certCta: "ማስረጃታት ርአ",
+        certPreviewTitle: "ማስረጃ ናይ ስኬት",
+        certPreviewLine1: "እዚ ይመስክር ከም",
+        certPreviewLine2: "ደረጃ 1: መሰረት ተወዲኡ ኣሎ",
+        certFounder: "መስራቲ",
+
+        helpTitle: "መሕለፊ ቃል ረሲዕካ?",
+        helpText: "ብግዜ ንዑስ ኣቐድም፣ ጉዕዞኻ ቀጽል።",
+        helpCta: "መሕለፊ ቃል ዳግማይ ምቕዳም",
+        helpNote: "እዚ ገጽ እንተዘይተሰሪሑ ቀጺልና ንሰርሖ።",
+
+        ytTitle: "ቻነል YouTube",
+        ytText: "ሓጺር ትምህርቲ፣ መትከል እና መሪሕነት — ንትእግስቲ ይሕግዝ።",
+        ytCta: "YouTube ክፈት",
+
+        founderTitle: "መልእኽቲ ካብ መስራቲ",
+        founderText:
+          "እዚ ጉዕዞ ምኽንያቱ ስኬት እንተኾነ ዕድል ኣይኮነን። ብእምነት፣ ብስርዓት እና ብናይ መዓልቲ ጥራይ ይሃንጽ።",
+        founderText2:
+          "እንተወዲቕካ ደጊም ተንስእ። እንተደካምካ ተንፈስ እና ቀጽል። መጻኢኻ እቲ ሎሚ እትገብሮ ይርእዮ ኣሎ።",
+        founderName: "— ሚካኤል ኣፈወርቂ",
+        founderCta: "ጉዕዞኻ ተቐላቐል",
+        founderLogin: "ተማሃሪ እዃ? እተው",
+
+        navLogin: "እተው",
+        navGetStarted: "ጀምር"
+      }
     };
 
-    setLang(lang);
-    document.getElementById("langEn").onclick = () => setLang("en");
-    document.getElementById("langTi").onclick = () => setLang("ti");
+    function applyLang(v) {
+      localStorage.setItem("landingLang", v);
+      const d = t[v] || t.en;
+
+      // simple setters
+      document.getElementById("brandSubtitle").textContent = d.brandSubtitle;
+      document.getElementById("heroBadge").textContent = d.heroBadge;
+      document.getElementById("heroTitle").innerHTML = d.heroTitle;
+      document.getElementById("heroSub").textContent = d.heroSub;
+
+      document.getElementById("ctaStart").textContent = d.ctaStart;
+      document.getElementById("ctaLogin").textContent = d.ctaLogin;
+      document.getElementById("ctaFounder").textContent = d.ctaFounder;
+
+      document.getElementById("mini1Title").textContent = d.mini1Title;
+      document.getElementById("mini1Text").textContent = d.mini1Text;
+      document.getElementById("mini2Title").textContent = d.mini2Title;
+      document.getElementById("mini2Text").textContent = d.mini2Text;
+      document.getElementById("mini3Title").textContent = d.mini3Title;
+      document.getElementById("mini3Text").textContent = d.mini3Text;
+
+      document.getElementById("whyTitle").textContent = d.whyTitle;
+      document.getElementById("whyText").textContent = d.whyText;
+
+      document.getElementById("journeyTitle").textContent = d.journeyTitle;
+      document.getElementById("journeyText").innerHTML = d.journeyText;
+
+      document.getElementById("step1Title").textContent = d.step1Title;
+      document.getElementById("step1Text").textContent = d.step1Text;
+      document.getElementById("step2Title").textContent = d.step2Title;
+      document.getElementById("step2Text").textContent = d.step2Text;
+      document.getElementById("step3Title").textContent = d.step3Title;
+      document.getElementById("step3Text").textContent = d.step3Text;
+
+      document.getElementById("certTitle").textContent = d.certTitle;
+      document.getElementById("certText").textContent = d.certText;
+      document.getElementById("certCta").textContent = d.certCta;
+      document.getElementById("certPreviewTitle").textContent = d.certPreviewTitle;
+      document.getElementById("certPreviewLine1").textContent = d.certPreviewLine1;
+      document.getElementById("certPreviewLine2").textContent = d.certPreviewLine2;
+      document.getElementById("certFounder").textContent = d.certFounder;
+
+      document.getElementById("helpTitle").textContent = d.helpTitle;
+      document.getElementById("helpText").textContent = d.helpText;
+      document.getElementById("helpCta").textContent = d.helpCta;
+      document.getElementById("helpNote").textContent = d.helpNote;
+
+      document.getElementById("ytTitle").textContent = d.ytTitle;
+      document.getElementById("ytText").textContent = d.ytText;
+      document.getElementById("ytCta").textContent = d.ytCta;
+
+      document.getElementById("founderTitle").textContent = d.founderTitle;
+      document.getElementById("founderText").textContent = d.founderText;
+      document.getElementById("founderText2").textContent = d.founderText2;
+      document.getElementById("founderName").textContent = d.founderName;
+      document.getElementById("founderCta").textContent = d.founderCta;
+      document.getElementById("founderLogin").textContent = d.founderLogin;
+
+      document.getElementById("navLogin").textContent = d.navLogin;
+      document.getElementById("navGetStarted").textContent = d.navGetStarted;
+    }
+
+    applyLang(lang);
+
+    document.getElementById("langEn").onclick = () => applyLang("en");
+    document.getElementById("langTi").onclick = () => applyLang("ti");
   </script>
 </body>
 </html>
