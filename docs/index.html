@@ -314,5 +314,18 @@
     document.getElementById("langEn").onclick = () => setLang("en");
     document.getElementById("langTi").onclick = () => setLang("ti");
   </script>
+  
+  <script>
+  let lastScroll = false;
+
+  window.addEventListener("scroll", () => {
+    const isScrolled = window.scrollY > 10;
+    if (isScrolled !== lastScroll) {
+      document.body.classList.toggle("scrolled", isScrolled);
+      lastScroll = isScrolled;
+    }
+  }, { passive: true });
+</script>
+
 </body>
 </html>
