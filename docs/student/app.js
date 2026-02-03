@@ -745,5 +745,9 @@ async function renderCert(courseId) {
   if (!location.hash) setHash("#/dashboard");
   state.lang = getLang();
   updateNav();
+
+  // 🔥 Wake up the API (Render cold start)
+  api("/health").catch(() => {});
+
   render();
 })();
