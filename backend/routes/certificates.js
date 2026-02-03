@@ -273,28 +273,191 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     doc.pipe(res);
 
-    doc.fontSize(30).text(brand().title, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(12).text(brand().org, { align: "center" });
-    doc.moveDown(2);
+    // ====================== GOLD PREMIUM TEMPLATE (PDFKit) ======================
+// Make sure doc was created with: new PDFDocument({ size: "A4", margin: 0 })
 
-    doc.fontSize(16).text("This certificate is proudly presented to", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fontSize(34).text(userName, { align: "center" });
-    doc.moveDown(1);
-    doc.fontSize(16).text("for completing the course:", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fontSize(22).text(courseTitle, { align: "center" });
+// ---- helpers ----
+const pageW = doc.page.width;   // A4 width
+const pageH = doc.page.height;  // A4 height
 
-    doc.moveDown(1.5);
-    doc.fontSize(11).text(`Issued on: ${new Date(cert.issued_at).toDateString()}`, { align: "center" });
-    doc.fontSize(10).text(`Certificate ID: ${cert.id}`, { align: "center" });
+function centerText(text, y, size, options = {}) {
+  doc.fontSize(size).text(text, 0, y, {
+    width: pageW,
+    align: "center",
+    ...options,
+  });
+}
 
-    doc.image(qrData, doc.page.width - 160, doc.page.height - 200, { width: 110 });
-    doc.fontSize(8).text("Scan to verify", doc.page.width - 160, doc.page.height - 80, {
-      width: 110,
-      align: "center"
-    });
+// A clean safe font setup (PDFKit built-ins). If you later add custom fonts,
+// replace these with doc.registerFont(...) and doc.font("YourFont").
+const FONT_SERIF = "Times-Roman";
+const FONT_SERIF_BOLD = "Times-Bold";
+const FONT_SANS = "Helvetica";
+const FONT_SANS_BOLD = "Helvetica-Bold";
+
+// ---- Background (very light) ----
+doc.save();
+doc.rect(0, 0, pageW, pageH).fill("#ffffff");
+doc.restore();
+
+// ---- Premium double border ----
+const outer = 28;
+const inner = 40;
+
+doc.save();
+// Outer border (dark gray)
+doc
+  .lineWidth(2)
+  .strokeColor("#2b2b2b")
+  .rect(outer, outer, pageW - outer * 2, pageH - outer * 2)
+  .stroke();
+
+// Inner border (gold)
+doc
+  .lineWidth(1.5)
+  .strokeColor("#b08d57") // elegant gold
+  .rect(inner, inner, pageW - inner * 2, pageH - inner * 2)
+  .stroke();
+doc.restore();
+
+// ---- Header line ornament ----
+doc.save();
+doc.strokeColor("#b08d57").lineWidth(1);
+doc
+  .moveTo(inner + 35, 130)
+  .lineTo(pageW - (inner + 35), 130)
+  .stroke();
+doc.restore();
+
+// ---- Title ----
+doc.font(FONT_SERIF_BOLD);
+centerText("Certificate of Completion", 75, 36, { characterSpacing: 0.5 });
+
+// ---- Brand/Sub-title ----
+doc.font(FONT_SANS);
+centerText("Eritrean Success Journey", 140, 13, { fill: true });
+doc.save();
+doc.fillColor("#555555");
+centerText("Learn • Grow • Believe • Succeed", 160, 10);
+doc.restore();
+
+// ---- Presented to ----
+doc.save();
+doc.fillColor("#2b2b2b");
+doc.font(FONT_SANS);
+centerText("This certificate is proudly presented to", 220, 14);
+doc.restore();
+
+// Student name (big)
+doc.save();
+doc.fillColor("#111111");
+doc.font(FONT_SERIF_BOLD);
+centerText(studentName || "Student", 255, 42);
+doc.restore();
+
+// ---- Course line ----
+doc.save();
+doc.fillColor("#2b2b2b");
+doc.font(FONT_SANS);
+centerText("for successfully completing the course:", 315, 14);
+doc.restore();
+
+doc.save();
+doc.fillColor("#111111");
+doc.font(FONT_SERIF_BOLD);
+centerText(courseTitle || "Course Title", 345, 26);
+doc.restore();
+
+// ---- Gold seal (vector) ----
+// (No external image needed — draws a premium seal)
+const sealX = pageW / 2;
+const sealY = 470;
+const sealR = 46;
+
+doc.save();
+// Outer ring
+doc
+  .lineWidth(2)
+  .strokeColor("#b08d57")
+  .fillColor("#fff7e6")
+  .circle(sealX, sealY, sealR)
+  .fillAndStroke();
+
+// Inner ring
+doc
+  .lineWidth(1)
+  .strokeColor("#b08d57")
+  .fillColor("#ffffff")
+  .circle(sealX, sealY, sealR - 10)
+  .fillAndStroke();
+
+// Seal text
+doc.fillColor("#8a6a3b").font(FONT_SANS_BOLD).fontSize(10);
+doc.text("OFFICIAL", sealX - 30, sealY - 10, { width: 60, align: "center" });
+doc.fontSize(9).text("CERTIFIED", sealX - 30, sealY + 3, { width: 60, align: "center" });
+doc.restore();
+
+// ---- Footer info (Issued, ID) ----
+doc.save();
+doc.fillColor("#333333");
+doc.font(FONT_SANS);
+centerText(`Issued on: ${issuedOnText || new Date().toDateString()}`, 545, 11);
+centerText(`Certificate ID: ${certificateId ?? "—"}`, 563, 11);
+doc.restore();
+
+// ---- QR Code + Verify link (bottom corners) ----
+const qrSize = 95;
+const qrPad = 14;
+const qrX = inner + 25;
+const qrY = pageH - inner - qrSize - 25;
+
+if (qrPngBuffer && Buffer.isBuffer(qrPngBuffer)) {
+  try {
+    doc.image(qrPngBuffer, qrX, qrY, { width: qrSize, height: qrSize });
+    doc.save();
+    doc.fillColor("#555555").font(FONT_SANS).fontSize(9);
+    doc.text("Scan to verify", qrX, qrY + qrSize + 6, { width: qrSize, align: "center" });
+    doc.restore();
+  } catch (e) {
+    // If QR fails, continue without breaking PDF
+  }
+}
+
+// Right side verify URL (short display)
+doc.save();
+doc.fillColor("#555555");
+doc.font(FONT_SANS).fontSize(9);
+
+const verifyLabel = "Verify:";
+const verifyText = (verifyUrl || "").length > 64 ? (verifyUrl || "").slice(0, 64) + "…" : (verifyUrl || "");
+
+doc.text(verifyLabel, pageW - inner - 260, qrY + 8, { width: 250, align: "right" });
+doc.fillColor("#1f4e79"); // link-ish blue
+doc.text(verifyText || "—", pageW - inner - 260, qrY + 24, { width: 250, align: "right", underline: true });
+
+doc.restore();
+
+// ---- Signature placeholders (optional) ----
+doc.save();
+doc.strokeColor("#999999").lineWidth(1);
+
+const sigY = 620;
+const leftSigX1 = inner + 70;
+const leftSigX2 = inner + 260;
+
+const rightSigX1 = pageW - inner - 260;
+const rightSigX2 = pageW - inner - 70;
+
+doc.moveTo(leftSigX1, sigY).lineTo(leftSigX2, sigY).stroke();
+doc.moveTo(rightSigX1, sigY).lineTo(rightSigX2, sigY).stroke();
+
+doc.fillColor("#666666").font(FONT_SANS).fontSize(10);
+doc.text("Instructor", leftSigX1, sigY + 6, { width: leftSigX2 - leftSigX1, align: "center" });
+doc.text("Program Director", rightSigX1, sigY + 6, { width: rightSigX2 - rightSigX1, align: "center" });
+
+doc.restore();
+
+// ==================== END GOLD PREMIUM TEMPLATE ====================
 
     doc.end();
   } catch (err) {
