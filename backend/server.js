@@ -90,6 +90,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Simple API home (prevents "Cannot GET /")
+app.get("/", (req, res) => {
+  res.status(200).send("Eritrean Success Journey API is running ✅ Use /health");
+});
+
 app.get("/health", (req, res) => {
   res.json({ ok: true, time: Date.now() });
 });
