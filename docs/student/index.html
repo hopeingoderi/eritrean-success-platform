@@ -27,6 +27,8 @@
   </header>
 
   <main class="container">
+    <!-- API status banner (shows only when needed) -->
+    <div id="apiStatus" class="card" style="display:none; margin-top:14px;"></div>
     <div id="app"></div>
 
     <footer class="footer">
@@ -39,5 +41,45 @@
   </script>
 
   <script src="./app.js"></script>
+  <script>
+/* ===== API wake-up & friendly status ===== */
+(async function wakeApi() {
+  const statusEl = document.getElementById("apiStatus");
+  if (!statusEl) return;
+
+  const API_BASE =
+    location.hostname.includes("localhost")
+      ? "http://localhost:4000"
+      : "https://api.riseeritrea.com";
+
+  statusEl.style.display = "block";
+  statusEl.innerHTML = `
+    <strong>Waking up the server…</strong><br>
+    This may take a few seconds the first time. ☕
+  `;
+
+  try {
+    const res = await fetch(API_BASE + "/health", { credentials: "include" });
+
+    if (!res.ok) throw new Error("API not ready");
+
+    statusEl.innerHTML = `
+      <strong>Server ready ✅</strong><br>
+      Welcome back. Let’s continue your journey.
+    `;
+
+    setTimeout(() => {
+      statusEl.style.display = "none";
+    }, 2500);
+
+  } catch (err) {
+    statusEl.innerHTML = `
+      <strong>Starting up…</strong><br>
+      If this is your first visit today, please wait a moment.
+    `;
+  }
+})();
+</script>
+
 </body>
 </html>
