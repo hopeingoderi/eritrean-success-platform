@@ -152,6 +152,21 @@ async function migrate() {
     WITH (OIDS=FALSE);
   `);
 
+  await query(`CREATE TABLE IF NOT EXISTS password_resets (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );`);
+
+  await query(`CREATE INDEX IF NOT EXISTS idx_password_resets_user_id
+    ON password_resets(user_id);`);
+
+  await query(`CREATE INDEX IF NOT EXISTS idx_password_resets_expires_at
+    ON password_resets(expires_at);`);
+
   // Add PK only if missing (avoid crash on re-run)
   await query(`
     DO $$
