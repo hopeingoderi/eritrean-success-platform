@@ -90,9 +90,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// ---------- ROUTES ----------
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+app.get("/health", (req, res) => {
+  res.json({ ok: true, time: Date.now() });
+});
 
+// ---------- ROUTES ----------
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/courses", require("./routes/courses"));
 app.use("/api/lessons", require("./routes/lessons"));
