@@ -95,7 +95,7 @@ app.get("/", (req, res) => {
   res.status(200).send("Eritrean Success Journey API is running ✅ Use /health");
 });
 
-app.get("/health", (req, res) => {
+app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: Date.now() });
 });
 
