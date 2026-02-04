@@ -5,13 +5,13 @@
 //   fetch(..., { credentials: "include" })
 //
 // Routes:
-//   POST /api/auth/register   { name, email, password }
+//   POST /api/auth/register   { first_name, last_name, email, password }
 //   POST /api/auth/login      { email, password }
 //   POST /api/auth/logout
 //   GET  /api/auth/me
 //
 // Response shape:
-//   { user: { id, name, email, role, isAdmin } }
+//   { user: { id, name, first_name, last_name, email, role, isAdmin } }
 
 const express = require("express");
 const bcrypt = require("bcryptjs");
@@ -30,6 +30,13 @@ function isValidEmail(email) {
   return e.includes("@") && e.split("@")[1]?.includes(".");
 }
 
+/** Build full display name safely */
+function buildFullName(firstName, lastName) {
+  return [String(firstName || "").trim(), String(lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /**
  * Convert DB row -> session user object
  * IMPORTANT: include `role` (frontend uses role === "admin")
@@ -40,10 +47,16 @@ function safeUserRowToSessionUser(row) {
 
   return {
     id: row.id,
-    name: row.name || "",
+    // Prefer structured names; fall back to row.name
+    first_name: row.first_name || "",
+    last_name: row.last_name || "",
+    name:
+      row.name ||
+      buildFullName(row.first_name, row.last_name) ||
+      "",
     email: row.email || "",
-    role,      // ✅ REQUIRED by frontend
-    isAdmin    // optional, but harmless
+    role, // ✅ REQUIRED by frontend
+    isAdmin // optional, but harmless
   };
 }
 
@@ -66,11 +79,13 @@ function sessionSave(req) {
  */
 router.post("/register", async (req, res) => {
   try {
-    const name = String(req.body?.name || "").trim();
+    const first_name = String(req.body?.first_name || "").trim();
+    const last_name = String(req.body?.last_name || "").trim();
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
 
-    if (!name) return res.status(400).json({ error: "Name is required" });
+    // Require at least first name (you can change this rule if you want)
+    if (!first_name) return res.status(400).json({ error: "First name is required" });
     if (!isValidEmail(email)) return res.status(400).json({ error: "Valid email is required" });
     if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
@@ -81,11 +96,14 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Keep `name` for backward compatibility + display on certificate
+    const fullName = buildFullName(first_name, last_name) || first_name;
+
     const ins = await query(
-      `INSERT INTO users (name, email, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, role`,
-      [name, email, passwordHash, "student"]
+      `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, first_name, last_name, email, role`,
+      [fullName, first_name || null, last_name || null, email, passwordHash, "student"]
     );
 
     const userRow = ins.rows[0];
@@ -114,7 +132,7 @@ router.post("/login", async (req, res) => {
     if (!password) return res.status(400).json({ error: "Password is required" });
 
     const r = await query(
-      `SELECT id, name, email, password_hash, role
+      `SELECT id, name, first_name, last_name, email, password_hash, role
        FROM users
        WHERE email=$1`,
       [email]

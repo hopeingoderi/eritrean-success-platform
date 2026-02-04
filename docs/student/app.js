@@ -240,8 +240,11 @@ function renderRegister() {
     <div class="card">
       <div class="h1">Register</div>
 
-      <label>Name</label>
-      <input id="name" type="text" placeholder="Your name" />
+ <label>First name</label>
+<input id="first_name" type="text" placeholder="First name" />
+
+<label>Last name</label>
+<input id="last_name" type="text" placeholder="Last name" />
 
       <label>Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
@@ -255,24 +258,51 @@ function renderRegister() {
     </div>
   `;
 
-  document.getElementById("regBtn").onclick = async () => {
-    const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value.trim();
-    const msg = document.getElementById("msg");
-    msg.textContent = "";
+document.getElementById("regBtn").onclick = async () => {
+  const first_name = document.getElementById("first_name").value.trim();
+  const last_name  = document.getElementById("last_name").value.trim();
+  const email      = document.getElementById("email").value.trim();
+  const password   = document.getElementById("password").value.trim();
 
-    try {
-      const r = await api("/auth/register", { method: "POST", body: { name, email, password } });
-      state.user = r.user;
-      updateNav();
-      setHash("#/dashboard");
-      render();
-    } catch (e) {
-      msg.textContent = "Register failed: " + e.message;
-    }
-  };
-}
+  const msg = document.getElementById("msg");
+  msg.textContent = "";
+
+  // ✅ VALIDATION 
+  if (!first_name || !last_name) {
+    msg.textContent = "First and last name are required";
+    return;
+  }
+
+  if (!email) {
+    msg.textContent = "Email is required";
+    return;
+  }
+
+  if (password.length < 6) {
+    msg.textContent = "Password must be at least 6 characters";
+    return;
+  }
+
+  // ✅ THEN the API call
+  try {
+    const r = await api("/auth/register", {
+      method: "POST",
+      body: {
+        first_name,
+        last_name,
+        email,
+        password
+      }
+    });
+
+    state.user = r.user;
+    updateNav();
+    setHash("#/dashboard");
+    render();
+  } catch (e) {
+    msg.textContent = "Register failed: " + e.message;
+  }
+};
 
 // ================= DASHBOARD =================
 async function renderDashboard() {
