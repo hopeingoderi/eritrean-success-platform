@@ -32,13 +32,16 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const courseId = req.params.courseId;
 
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
-});
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   const r = await query(
-    `SELECT score, passed, updated_at
-     FROM exam_attempts
-     WHERE user_id = $1 AND course_id = $2`,
+    `
+    SELECT score, passed, updated_at
+    FROM exam_attempts
+    WHERE user_id = $1 AND course_id = $2
+    `,
     [userId, courseId]
   );
 
@@ -46,13 +49,12 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
 
   return res.json({
     courseId,
-    completed: !!row,
+    attempted: !!row,
     passed: row?.passed ?? false,
     score: row?.score ?? null,
-    updatedAt: row?.updated_at ?? null,
+    updated_at: row?.updated_at ?? null,
   });
 });
-
 /**
  * GET /api/exams/:courseId?lang=en|ti
  * Returns exam definition + passScore
