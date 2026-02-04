@@ -250,176 +250,179 @@ router.post("/claim", requireAuth, async (req, res) => {
 /* ============================================================
    PDF DOWNLOAD — WOW DESIGN + QR + SEAL
    ============================================================ */
+// ======================= PREMIUM PDF CERTIFICATE (PDFKIT) =======================
 router.get("/:courseId/pdf", requireAuth, async (req, res) => {
   try {
-    const userId = req.session.user.id;
-    const courseId = safeCourseId(req.params.courseId);
-    if (!courseId) return res.status(400).json({ error: "Invalid courseId" });
+    const courseId = req.params.courseId;
+    const userId = req.user?.id || req.userId; // supports both styles
 
-    const cert = await ensureCertificate(userId, courseId);
+    // 1) Load data
+    const userR = await query(
+      `SELECT name_en AS name FROM users WHERE id=$1`,
+      [userId]
+    );
+    const courseR = await query(
+      `SELECT title_en AS title FROM courses WHERE id=$1`,
+      [courseId]
+    );
 
-    const userR = await query("SELECT name FROM users WHERE id=$1", [userId]);
-    const courseR = await query("SELECT title_en FROM courses WHERE id=$1", [courseId]);
+    const userName = userR.rows?.[0]?.name || "Student";
+    const courseTitle = courseR.rows?.[0]?.title || courseId;
 
-    const userName = userR.rows[0]?.name || "Student";
-    const courseTitle = courseR.rows[0]?.title_en || courseLabel(courseId);
+    // If you already have certificate record, keep your own query here.
+    // This is a safe fallback:
+    const certR = await query(
+      `SELECT id, issued_at FROM certificates WHERE user_id=$1 AND course_id=$2 ORDER BY id DESC LIMIT 1`,
+      [userId, courseId]
+    );
+    const certId = certR.rows?.[0]?.id ?? 1;
+    const issuedAt = certR.rows?.[0]?.issued_at ?? new Date();
 
-    const verifyUrl = `${publicApiBaseUrl()}/api/certificates/verify/${cert.id}`;
-    const qrData = await QRCode.toBuffer(verifyUrl);
+    const issuedOn = new Date(issuedAt).toDateString(); // "Wed Jan 21 2026"
 
+    // 2) Verify URL + QR
+    const publicBase =
+      process.env.PUBLIC_API_BASE?.replace(/\/$/, "") ||
+      "https://api.riseeritrea.com";
+    const verifyUrl = `${publicBase}/verify/certificate/${certId}`;
+    const qrData = await QRCode.toBuffer(verifyUrl, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 220,
+    });
+
+    // 3) Headers
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="certificate-${courseId}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="certificate-${courseId}.pdf"`
+    );
 
+    // 4) Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     doc.pipe(res);
 
-    // ====================== GOLD PREMIUM TEMPLATE (PDFKit) =====================
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
 
-// Page constants
-const pageW = doc.page.width;
-const pageH = doc.page.height;
+    // Helpers
+    const centerText = (text, y, size, options = {}) => {
+      doc.fontSize(size).text(text, 0, y, {
+        width: pageW,
+        align: "center",
+        ...options,
+      });
+    };
 
-// Colors (PDFKit supports hex)
-const GOLD = "#C8A84E";
-const GOLD_DARK = "#8A6A1F";
-const INK = "#222222";
-const SOFT = "#666666";
+    // ======================= DESIGN START =======================
 
-// Helpers
-function centerText(text, y, size, options = {}) {
-  doc.fillColor(options.color || INK)
-    .font(options.font || "Helvetica")
-    .fontSize(size)
-    .text(text, 0, y, { width: pageW, align: "center" });
-}
+    // Background (very light)
+    doc.save();
+    doc.rect(0, 0, pageW, pageH).fill("#ffffff");
+    doc.restore();
 
-function hr(y, color = GOLD, thickness = 1) {
-  doc.save();
-  doc.strokeColor(color).lineWidth(thickness);
-  doc.moveTo(70, y).lineTo(pageW - 70, y).stroke();
-  doc.restore();
-}
+    // Double border
+    doc.save();
+    doc.lineWidth(2).rect(28, 28, pageW - 56, pageH - 56).stroke("#111111");
+    doc.lineWidth(1).rect(38, 38, pageW - 76, pageH - 76).stroke("#A0A0A0");
+    doc.restore();
 
-function drawBorder() {
-  doc.save();
-  // Outer gold border
-  doc.strokeColor(GOLD).lineWidth(4);
-  doc.rect(28, 28, pageW - 56, pageH - 56).stroke();
+    // Subtle watermark
+    doc.save();
+    doc.opacity(0.06);
+    doc.fillColor("#000000");
+    doc.font("Helvetica-Bold");
+    doc.fontSize(64).text("Eritrean", 0, pageH / 2 - 80, {
+      width: pageW,
+      align: "center",
+    });
+    doc.fontSize(64).text("Success Journey", 0, pageH / 2 - 20, {
+      width: pageW,
+      align: "center",
+    });
+    doc.opacity(1);
+    doc.restore();
 
-  // Inner thin border
-  doc.strokeColor(GOLD_DARK).lineWidth(1);
-  doc.rect(40, 40, pageW - 80, pageH - 80).stroke();
-  doc.restore();
-}
+    // Title
+    doc.fillColor("#111111");
+    doc.font("Helvetica-Bold");
+    centerText("Certificate of Completion", 110, 34);
 
-function drawWatermark(text) {
-  doc.save();
-  doc.rotate(-22, { origin: [pageW / 2, pageH / 2] });
-  doc.fillColor("#000000").opacity(0.06);
-  doc.font("Helvetica-Bold").fontSize(80);
-  doc.text(text, 0, pageH / 2 - 60, { width: pageW, align: "center" });
-  doc.opacity(1).restore();
-}
+    doc.font("Helvetica");
+    centerText("Eritrean Success Journey", 160, 14, { fill: "#333333" });
 
-function drawSeal() {
-  // Simple “seal” circle (premium look)
-  const cx = pageW / 2;
-  const cy = 195;
+    // Presented to
+    doc.font("Helvetica");
+    centerText("This certificate is proudly presented to", 220, 14, {
+      fill: "#333333",
+    });
 
-  doc.save();
-  // Outer circle
-  doc.strokeColor(GOLD).lineWidth(3);
-  doc.circle(cx, cy, 38).stroke();
+    doc.font("Helvetica-Bold");
+    centerText(userName, 255, 40, { fill: "#111111" });
 
-  // Inner circle
-  doc.strokeColor(GOLD_DARK).lineWidth(1);
-  doc.circle(cx, cy, 30).stroke();
+    doc.font("Helvetica");
+    centerText("for successfully completing the course:", 320, 14, {
+      fill: "#333333",
+    });
 
-  // Tiny ribbon lines
-  doc.strokeColor(GOLD).lineWidth(2);
-  doc.moveTo(cx - 18, cy + 42).lineTo(cx - 6, cy + 64).stroke();
-  doc.moveTo(cx + 18, cy + 42).lineTo(cx + 6, cy + 64).stroke();
+    doc.font("Helvetica-Bold");
+    centerText(courseTitle, 350, 24, { fill: "#111111" });
 
-  // Seal text
-  doc.fillColor(GOLD_DARK).font("Helvetica-Bold").fontSize(10);
-  doc.text("OFFICIAL", cx - 28, cy - 7, { width: 56, align: "center" });
-  doc.restore();
-}
+    // Gold seal (simple premium)
+    const sealX = pageW / 2;
+    const sealY = 455;
 
-function drawSignatureBlock(leftX, y, label, name) {
-  doc.save();
-  doc.strokeColor("#999999").lineWidth(1);
-  doc.moveTo(leftX, y).lineTo(leftX + 200, y).stroke();
-  doc.fillColor(SOFT).font("Helvetica").fontSize(9).text(label, leftX, y + 6, { width: 200, align: "center" });
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text(name, leftX, y + 22, { width: 200, align: "center" });
-  doc.restore();
-}
+    doc.save();
+    doc.lineWidth(3).strokeColor("#b08d57").fillColor("#ffffff");
+    doc.circle(sealX, sealY, 36).stroke();
 
-// --- Background + borders ---
-drawBorder();
-drawWatermark("CERTIFIED");
+    doc.font("Helvetica-Bold");
+    doc.fillColor("#b08d57");
+    doc.fontSize(10).text("OFFICIAL", sealX - 30, sealY - 5, {
+      width: 60,
+      align: "center",
+    });
+    doc.restore();
 
-// --- Header ---
-centerText("Certificate of Completion", 88, 32, { font: "Helvetica-Bold", color: INK });
-centerText("Eritrean Success Journey", 132, 12, { color: SOFT });
-hr(155);
+    // Issue date + cert id
+    doc.font("Helvetica");
+    doc.fillColor("#444444");
+    centerText(`Issued on: ${issuedOn}`, pageH - 235, 11);
+    centerText(`Certificate ID: ${certId}`, pageH - 215, 11);
 
-// Seal badge
-drawSeal();
+    // Signature lines
+    const sigY = pageH - 170;
 
-// --- Main copy ---
-// You should already have these variables from your DB queries:
-/// userName, courseTitle, issuedOnStr, certId, verifyUrl
+    doc.save();
+    doc.strokeColor("#222222");
+    doc.lineWidth(1);
 
-// Fallbacks if missing (safe)
-const safeUserName = (typeof userName !== "undefined" && userName) ? userName : "Student";
-const safeCourseTitle = (typeof courseTitle !== "undefined" && courseTitle) ? courseTitle : "Course";
-const safeIssued = (typeof issuedOnStr !== "undefined" && issuedOnStr) ? issuedOnStr : "";
-const safeCertId = (typeof certId !== "undefined" && certId) ? String(certId) : "";
-const safeVerifyUrl = (typeof verifyUrl !== "undefined" && verifyUrl) ? verifyUrl : "";
+    // Left signature
+    doc.moveTo(80, sigY + 30).lineTo(250, sigY + 30).stroke();
+    doc.fillColor("#222222").font("Helvetica").fontSize(11);
+    doc.text("Program Director", 80, sigY + 40);
 
-// Body text
-centerText("This certificate is proudly presented to", 255, 13, { color: SOFT });
+    // Right signature
+    doc.moveTo(pageW - 250, sigY + 30).lineTo(pageW - 80, sigY + 30).stroke();
+    doc.text("Instructor", pageW - 250, sigY + 40);
 
-doc.fillColor(INK).font("Helvetica-Bold").fontSize(34);
-doc.text(safeUserName, 0, 282, { width: pageW, align: "center" });
+    doc.restore();
 
-centerText("for successfully completing the course:", 335, 12, { color: SOFT });
+    // QR + verify link
+    doc.image(qrData, pageW / 2 - 45, pageH - 140, { width: 90 });
+    doc.font("Helvetica");
+    doc.fillColor("#333333");
+    doc.fontSize(9).text(`Verify: ${verifyUrl}`, 0, pageH - 45, {
+      width: pageW,
+      align: "center",
+    });
 
-doc.fillColor(INK).font("Helvetica-Bold").fontSize(20);
-doc.text(safeCourseTitle, 0, 360, { width: pageW, align: "center" });
-
-hr(410, "#E5D7A8", 1);
-
-// --- Footer info ---
-doc.fillColor(SOFT).font("Helvetica").fontSize(10);
-doc.text(`Issued on: ${safeIssued}`, 0, 445, { width: pageW, align: "center" });
-doc.text(`Certificate ID: ${safeCertId}`, 0, 462, { width: pageW, align: "center" });
-
-// Signatures
-drawSignatureBlock(90, 520, "Authorized Signature", "Eritrean Success Journey");
-drawSignatureBlock(pageW - 290, 520, "Instructor", "Program Team");
-
-// --- QR Code (optional but premium) ---
-if (safeVerifyUrl) {
-  const qrBuf = await QRCode.toBuffer(safeVerifyUrl, { margin: 1, scale: 5 });
-
-  // QR bottom center
-  doc.image(qrBuf, pageW / 2 - 45, 585, { width: 90 });
-
-  doc.fillColor(SOFT).font("Helvetica").fontSize(8);
-  doc.text("Verify this certificate", 0, 678, { width: pageW, align: "center" });
-  doc.fillColor("#0A58CA").font("Helvetica").fontSize(8);
-  doc.text(safeVerifyUrl, 0, 690, { width: pageW, align: "center", link: safeVerifyUrl, underline: true });
-}
-
-// ==================== END GOLD PREMIUM TEMPLATE ====================
+    // ======================= DESIGN END =======================
 
     doc.end();
   } catch (err) {
     console.error("PDF ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error generating certificate PDF" });
   }
 });
-
 module.exports = router;
