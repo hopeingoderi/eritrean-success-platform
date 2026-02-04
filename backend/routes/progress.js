@@ -57,21 +57,7 @@ router.get("/course/:courseId", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     const courseId = String(req.params.courseId || "").trim();
 
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!courseId) return res.status(400).json({ error: "Missing courseId" });
-
-    // totals for the UI
-    const totalQ = await query(
-      "SELECT COUNT(*)::int AS c FROM lessons WHERE course_id=$1",
-      [courseId]
-    );
-
-    const doneQ = await query(
-      "SELECT COUNT(*)::int AS c FROM progress WHERE user_id=$1 AND course_id=$2 AND completed=true",
-      [userId, courseId]
-    );
-
-    // per-lesson progress (keep what you already had)
+    // lessons progress
     const r = await query(
       `SELECT lesson_index, completed, quiz_score, reflection, reflection_updated_at, updated_at
        FROM progress
@@ -82,21 +68,41 @@ router.get("/course/:courseId", requireAuth, async (req, res) => {
 
     const byLessonIndex = {};
     for (const row of r.rows) {
-      const reflectionText = (row.reflection || "").toString();
       byLessonIndex[row.lesson_index] = {
         completed: !!row.completed,
-        quizScore: typeof row.quiz_score === "number" ? row.quiz_score : null,
-        hasReflection: reflectionText.trim().length > 0,
-        reflectionText,
-        reflectionUpdatedAt: row.reflection_updated_at || null,
-        updatedAt: row.updated_at || null
+        quizScore: row.quiz_score ?? null
       };
     }
 
+    // 🔽 ADD THESE TWO QUERIES
+    const totalQ = await query(
+      "SELECT COUNT(*)::int AS c FROM lessons WHERE course_id=$1",
+      [courseId]
+    );
+
+    const doneQ = await query(
+      "SELECT COUNT(*)::int AS c FROM progress WHERE user_id=$1 AND course_id=$2 AND completed=true",
+      [userId, courseId]
+    );
+
+    // 🔽 ADD THESE VARIABLES
+    const totalLessons = totalQ.rows[0]?.c ?? 0;
+    const completedLessons = doneQ.rows[0]?.c ?? 0;
+
+    // 🔽 THIS IS THE IMPORTANT PART
     return res.json({
       courseId,
-      totalLessons: totalQ.rows[0]?.c ?? 0,
-      completedLessons: doneQ.rows[0]?.c ?? 0,
+
+      // canonical names
+      totalLessons,
+      completedLessons,
+
+      // aliases (frontend safety)
+      total: totalLessons,
+      done: completedLessons,
+      lessonsTotal: totalLessons,
+      lessonsCompleted: completedLessons,
+
       byLessonIndex
     });
   } catch (err) {
@@ -105,18 +111,6 @@ router.get("/course/:courseId", requireAuth, async (req, res) => {
   }
 });
 
-/**
- * POST /api/progress/update
- * Upsert lesson progress.
- * Body:
- *  {
- *    courseId: string,
- *    lessonIndex: number,
- *    completed?: boolean,
- *    quizScore?: number (0..100),
- *    reflection?: string (<=2000)
- *  }
- */
 router.post("/update", requireAuth, async (req, res) => {
   const schema = z.object({
     courseId: z.string().min(1),
