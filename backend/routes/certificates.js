@@ -204,7 +204,7 @@ async function statusHandler(req, res) {
   }
 }
 
-router.get("/:courseId", requireAuth, statusHandler);
+// STATUS (frontend should call this)
 router.get("/:courseId/status", requireAuth, statusHandler);
 
 /**
@@ -240,9 +240,6 @@ router.post("/:courseId/claim", requireAuth, async (req, res) => {
 /**
  * PDF
  * GET /api/certificates/:courseId/pdf
- *
- * Note: This endpoint requires auth (so a student can’t download other people’s).
- * Verification page is public.
  */
 router.get("/:courseId/pdf", requireAuth, async (req, res) => {
   try {
@@ -252,7 +249,6 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     if (!courseId) return res.status(400).json({ error: "Missing courseId" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    // Ensure cert exists (and eligible if you want strict behavior)
     const eligible = await checkEligibility({ userId, courseId });
     if (!eligible) return res.status(403).json({ error: "Not eligible yet" });
 
@@ -262,6 +258,7 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     const verifyUrl = `${publicBase(req)}/api/certificates/verify/${cert.id}`;
     const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png", margin: 1, scale: 6 });
 
+    //  PDF generation 
     // Headers
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="certificate-${filenameSafe(courseId)}.pdf"`);
