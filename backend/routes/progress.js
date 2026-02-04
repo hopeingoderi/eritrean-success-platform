@@ -12,7 +12,7 @@ const router = express.Router();
  */
 router.get("/status", requireAuth, async (req, res) => {
   try {
-    const userId = req.session.user.id;
+    const userId = req.user?.id;
 
     const courses = await query("SELECT id FROM courses ORDER BY id");
     const out = [];
@@ -54,7 +54,7 @@ router.get("/status", requireAuth, async (req, res) => {
  */
 router.get("/course/:courseId", requireAuth, async (req, res) => {
   try {
-    const userId = req.session.user.id;
+    const userId = req.user?.id;
     const courseId = String(req.params.courseId || "").trim();
 
     const r = await query(
@@ -111,7 +111,7 @@ router.post("/update", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
   }
 
-  const userId = req.session.user.id;
+  const userId = req.user?.id;
   const { courseId, lessonIndex, completed, quizScore, reflection } = parsed.data;
 
   // Convert missing optional fields to null for SQL params.

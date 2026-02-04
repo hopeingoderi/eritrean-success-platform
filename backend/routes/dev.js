@@ -11,7 +11,9 @@ const router = express.Router();
  * body: { courseId, score }
  */
 router.post("/pass-exam", requireAuth, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
   const courseId = String(req.body?.courseId || "");
   const score = Number(req.body?.score ?? 100);
 

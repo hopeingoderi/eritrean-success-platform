@@ -1,18 +1,4 @@
 // backend/routes/auth.js
-//
-// Auth routes for Eritrean Success Journey
-// Cookie-based sessions (req.session) so frontend calls with:
-//   fetch(..., { credentials: "include" })
-//
-// Routes:
-//   POST /api/auth/register   { first_name, last_name, email, password }
-//   POST /api/auth/login      { email, password }
-//   POST /api/auth/logout
-//   GET  /api/auth/me
-//
-// Response shape:
-//   { user: { id, name, first_name, last_name, email, role, isAdmin } }
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { query } = require("../db_pg");
@@ -24,10 +10,11 @@ function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
-/** Strict-ish email check */
+/** Better email check (still lightweight) */
 function isValidEmail(email) {
   const e = normalizeEmail(email);
-  return e.includes("@") && e.split("@")[1]?.includes(".");
+  // very basic: something@something.something
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 
 /** Build full display name safely */
@@ -47,16 +34,12 @@ function safeUserRowToSessionUser(row) {
 
   return {
     id: row.id,
-    // Prefer structured names; fall back to row.name
     first_name: row.first_name || "",
     last_name: row.last_name || "",
-    name:
-      row.name ||
-      buildFullName(row.first_name, row.last_name) ||
-      "",
+    name: row.name || buildFullName(row.first_name, row.last_name) || "",
     email: row.email || "",
-    role, // ✅ REQUIRED by frontend
-    isAdmin // optional, but harmless
+    role,
+    isAdmin,
   };
 }
 
@@ -84,29 +67,32 @@ router.post("/register", async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
 
-    // Require at least first name (you can change this rule if you want)
-    if (!first_name || !last_name) return res.status(400).json({ error: "First name is required" });
-    if (!isValidEmail(email)) return res.status(400).json({ error: "Valid email is required" });
-    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+    if (!first_name || !last_name) {
+      return res.status(400).json({ error: "First and last name are required" });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
 
     const existing = await query("SELECT id FROM users WHERE email=$1", [email]);
     if (existing.rows.length) {
       return res.status(409).json({ error: "Email already registered" });
     }
 
- const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const name = `${first_name} ${last_name}`.trim();
 
-// build full display name for certificate + UI
-const name = `${first_name} ${last_name}`.trim();
+    const ins = await query(
+      `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, first_name, last_name, email, role`,
+      [name, first_name, last_name, email, passwordHash, "student"]
+    );
 
-const ins = await query(
-  `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
-   VALUES ($1, $2, $3, $4, $5, $6)
-   RETURNING id, name, first_name, last_name, email, role`,
-  [name, first_name, last_name, email, passwordHash, "student"]
-);
-
-const userRow = ins.rows[0];
+    const userRow = ins.rows[0];
 
     await sessionRegenerate(req);
     req.session.user = safeUserRowToSessionUser(userRow);
@@ -121,7 +107,6 @@ const userRow = ins.rows[0];
 
 /**
  * POST /api/auth/login
- * Creates a session if email/password matches.
  */
 router.post("/login", async (req, res) => {
   try {
@@ -162,10 +147,12 @@ router.post("/login", async (req, res) => {
 /**
  * POST /api/auth/logout
  */
-router.post("/logout", async (req, res) => {
+router.post("/logout", (req, res) => {
   try {
     req.session.destroy(() => {
-      res.clearCookie("sid");
+      // Most express-session setups use "connect.sid" by default.
+      // If you configured a custom name, replace this with that name.
+      res.clearCookie("connect.sid");
       return res.json({ ok: true });
     });
   } catch (err) {
@@ -176,12 +163,10 @@ router.post("/logout", async (req, res) => {
 
 /**
  * GET /api/auth/me
- * ✅ Return { user: null } if not logged in (better for your frontend)
  */
 router.get("/me", (req, res) => {
   const user = req.session?.user;
-  if (!user) return res.json({ user: null });
-  return res.json({ user });
+  return res.json({ user: user || null });
 });
 
 module.exports = router;

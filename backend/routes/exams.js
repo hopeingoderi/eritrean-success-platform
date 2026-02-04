@@ -29,8 +29,11 @@ function safeJsonParse(str, fallback = null) {
  * Returns whether user completed exam + score/pass
  */
 router.get("/status/:courseId", requireAuth, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user?.id;
   const courseId = req.params.courseId;
+
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+});
 
   const r = await query(
     `SELECT score, passed, updated_at
@@ -93,8 +96,10 @@ router.get("/:courseId", requireAuth, async (req, res) => {
  * Returns the user's attempt for this exam (if exists)
  */
 router.get("/:courseId/attempt", requireAuth, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user?.id;          // ✅ changed
   const courseId = req.params.courseId;
+
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   const r = await query(
     `SELECT score, passed, updated_at
@@ -112,8 +117,10 @@ router.get("/:courseId/attempt", requireAuth, async (req, res) => {
  * Stores attempt and returns pass/fail
  */
 router.post("/:courseId/submit", requireAuth, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user?.id;          // ✅ changed
   const courseId = req.params.courseId;
+
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   const score = req.body?.score;
 
