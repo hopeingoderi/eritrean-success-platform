@@ -98,7 +98,9 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: Date.now() });
 });
-
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, time: Date.now() });
+});
 // ---------- ROUTES ----------
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/courses", require("./routes/courses"));
