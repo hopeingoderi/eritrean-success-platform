@@ -85,7 +85,7 @@ router.post("/register", async (req, res) => {
     const password = String(req.body?.password || "");
 
     // Require at least first name (you can change this rule if you want)
-    if (!first_name) return res.status(400).json({ error: "First name is required" });
+    if (!first_name || !last_name) return res.status(400).json({ error: "First name is required" });
     if (!isValidEmail(email)) return res.status(400).json({ error: "Valid email is required" });
     if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
@@ -94,19 +94,19 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({ error: "Email already registered" });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+ const passwordHash = await bcrypt.hash(password, 10);
 
-    // Keep `name` for backward compatibility + display on certificate
-    const fullName = buildFullName(first_name, last_name) || first_name;
+// build full display name for certificate + UI
+const name = `${first_name} ${last_name}`.trim();
 
-    const ins = await query(
-      `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, first_name, last_name, email, role`,
-      [fullName, first_name || null, last_name || null, email, passwordHash, "student"]
-    );
+const ins = await query(
+  `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
+   VALUES ($1, $2, $3, $4, $5, $6)
+   RETURNING id, name, first_name, last_name, email, role`,
+  [name, first_name, last_name, email, passwordHash, "student"]
+);
 
-    const userRow = ins.rows[0];
+const userRow = ins.rows[0];
 
     await sessionRegenerate(req);
     req.session.user = safeUserRowToSessionUser(userRow);
