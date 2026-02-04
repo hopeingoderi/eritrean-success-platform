@@ -57,6 +57,21 @@ router.get("/course/:courseId", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     const courseId = String(req.params.courseId || "").trim();
 
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!courseId) return res.status(400).json({ error: "Missing courseId" });
+
+    // totals for the UI
+    const totalQ = await query(
+      "SELECT COUNT(*)::int AS c FROM lessons WHERE course_id=$1",
+      [courseId]
+    );
+
+    const doneQ = await query(
+      "SELECT COUNT(*)::int AS c FROM progress WHERE user_id=$1 AND course_id=$2 AND completed=true",
+      [userId, courseId]
+    );
+
+    // per-lesson progress (keep what you already had)
     const r = await query(
       `SELECT lesson_index, completed, quiz_score, reflection, reflection_updated_at, updated_at
        FROM progress
@@ -78,7 +93,12 @@ router.get("/course/:courseId", requireAuth, async (req, res) => {
       };
     }
 
-    return res.json({ courseId, byLessonIndex });
+    return res.json({
+      courseId,
+      totalLessons: totalQ.rows[0]?.c ?? 0,
+      completedLessons: doneQ.rows[0]?.c ?? 0,
+      byLessonIndex
+    });
   } catch (err) {
     console.error("PROGRESS COURSE ERROR:", err);
     return res.status(500).json({ error: "Server error" });
