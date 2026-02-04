@@ -273,189 +273,145 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     doc.pipe(res);
 
-    // ====================== GOLD PREMIUM TEMPLATE (PDFKit) ======================
-// Make sure doc was created with: new PDFDocument({ size: "A4", margin: 0 })
+    // ====================== GOLD PREMIUM TEMPLATE (PDFKit) =====================
 
-// ---- helpers ----
-const pageW = doc.page.width;   // A4 width
-const pageH = doc.page.height;  // A4 height
+// Page constants
+const pageW = doc.page.width;
+const pageH = doc.page.height;
 
+// Colors (PDFKit supports hex)
+const GOLD = "#C8A84E";
+const GOLD_DARK = "#8A6A1F";
+const INK = "#222222";
+const SOFT = "#666666";
+
+// Helpers
 function centerText(text, y, size, options = {}) {
-  doc.fontSize(size).text(text, 0, y, {
-    width: pageW,
-    align: "center",
-    ...options,
-  });
+  doc.fillColor(options.color || INK)
+    .font(options.font || "Helvetica")
+    .fontSize(size)
+    .text(text, 0, y, { width: pageW, align: "center" });
 }
 
-// A clean safe font setup (PDFKit built-ins). If you later add custom fonts,
-// replace these with doc.registerFont(...) and doc.font("YourFont").
-const FONT_SERIF = "Times-Roman";
-const FONT_SERIF_BOLD = "Times-Bold";
-const FONT_SANS = "Helvetica";
-const FONT_SANS_BOLD = "Helvetica-Bold";
-
-// ---- Background (very light) ----
-doc.save();
-doc.rect(0, 0, pageW, pageH).fill("#ffffff");
-doc.restore();
-
-// ---- Premium double border ----
-const outer = 28;
-const inner = 40;
-
-doc.save();
-// Outer border (dark gray)
-doc
-  .lineWidth(2)
-  .strokeColor("#2b2b2b")
-  .rect(outer, outer, pageW - outer * 2, pageH - outer * 2)
-  .stroke();
-
-// Inner border (gold)
-doc
-  .lineWidth(1.5)
-  .strokeColor("#b08d57") // elegant gold
-  .rect(inner, inner, pageW - inner * 2, pageH - inner * 2)
-  .stroke();
-doc.restore();
-
-// ---- Header line ornament ----
-doc.save();
-doc.strokeColor("#b08d57").lineWidth(1);
-doc
-  .moveTo(inner + 35, 130)
-  .lineTo(pageW - (inner + 35), 130)
-  .stroke();
-doc.restore();
-
-// ---- Title ----
-doc.font(FONT_SERIF_BOLD);
-centerText("Certificate of Completion", 75, 36, { characterSpacing: 0.5 });
-
-// ---- Brand/Sub-title ----
-doc.font(FONT_SANS);
-centerText("Eritrean Success Journey", 140, 13, { fill: true });
-doc.save();
-doc.fillColor("#555555");
-centerText("Learn • Grow • Believe • Succeed", 160, 10);
-doc.restore();
-
-// ---- Presented to ----
-doc.save();
-doc.fillColor("#2b2b2b");
-doc.font(FONT_SANS);
-centerText("This certificate is proudly presented to", 220, 14);
-doc.restore();
-
-// Student name (big)
-doc.save();
-doc.fillColor("#111111");
-doc.font(FONT_SERIF_BOLD);
-centerText(studentName || "Student", 255, 42);
-doc.restore();
-
-// ---- Course line ----
-doc.save();
-doc.fillColor("#2b2b2b");
-doc.font(FONT_SANS);
-centerText("for successfully completing the course:", 315, 14);
-doc.restore();
-
-doc.save();
-doc.fillColor("#111111");
-doc.font(FONT_SERIF_BOLD);
-centerText(courseTitle || "Course Title", 345, 26);
-doc.restore();
-
-// ---- Gold seal (vector) ----
-// (No external image needed — draws a premium seal)
-const sealX = pageW / 2;
-const sealY = 470;
-const sealR = 46;
-
-doc.save();
-// Outer ring
-doc
-  .lineWidth(2)
-  .strokeColor("#b08d57")
-  .fillColor("#fff7e6")
-  .circle(sealX, sealY, sealR)
-  .fillAndStroke();
-
-// Inner ring
-doc
-  .lineWidth(1)
-  .strokeColor("#b08d57")
-  .fillColor("#ffffff")
-  .circle(sealX, sealY, sealR - 10)
-  .fillAndStroke();
-
-// Seal text
-doc.fillColor("#8a6a3b").font(FONT_SANS_BOLD).fontSize(10);
-doc.text("OFFICIAL", sealX - 30, sealY - 10, { width: 60, align: "center" });
-doc.fontSize(9).text("CERTIFIED", sealX - 30, sealY + 3, { width: 60, align: "center" });
-doc.restore();
-
-// ---- Footer info (Issued, ID) ----
-doc.save();
-doc.fillColor("#333333");
-doc.font(FONT_SANS);
-centerText(`Issued on: ${issuedOnText || new Date().toDateString()}`, 545, 11);
-centerText(`Certificate ID: ${certificateId ?? "—"}`, 563, 11);
-doc.restore();
-
-// ---- QR Code + Verify link (bottom corners) ----
-const qrSize = 95;
-const qrPad = 14;
-const qrX = inner + 25;
-const qrY = pageH - inner - qrSize - 25;
-
-if (qrPngBuffer && Buffer.isBuffer(qrPngBuffer)) {
-  try {
-    doc.image(qrPngBuffer, qrX, qrY, { width: qrSize, height: qrSize });
-    doc.save();
-    doc.fillColor("#555555").font(FONT_SANS).fontSize(9);
-    doc.text("Scan to verify", qrX, qrY + qrSize + 6, { width: qrSize, align: "center" });
-    doc.restore();
-  } catch (e) {
-    // If QR fails, continue without breaking PDF
-  }
+function hr(y, color = GOLD, thickness = 1) {
+  doc.save();
+  doc.strokeColor(color).lineWidth(thickness);
+  doc.moveTo(70, y).lineTo(pageW - 70, y).stroke();
+  doc.restore();
 }
 
-// Right side verify URL (short display)
-doc.save();
-doc.fillColor("#555555");
-doc.font(FONT_SANS).fontSize(9);
+function drawBorder() {
+  doc.save();
+  // Outer gold border
+  doc.strokeColor(GOLD).lineWidth(4);
+  doc.rect(28, 28, pageW - 56, pageH - 56).stroke();
 
-const verifyLabel = "Verify:";
-const verifyText = (verifyUrl || "").length > 64 ? (verifyUrl || "").slice(0, 64) + "…" : (verifyUrl || "");
+  // Inner thin border
+  doc.strokeColor(GOLD_DARK).lineWidth(1);
+  doc.rect(40, 40, pageW - 80, pageH - 80).stroke();
+  doc.restore();
+}
 
-doc.text(verifyLabel, pageW - inner - 260, qrY + 8, { width: 250, align: "right" });
-doc.fillColor("#1f4e79"); // link-ish blue
-doc.text(verifyText || "—", pageW - inner - 260, qrY + 24, { width: 250, align: "right", underline: true });
+function drawWatermark(text) {
+  doc.save();
+  doc.rotate(-22, { origin: [pageW / 2, pageH / 2] });
+  doc.fillColor("#000000").opacity(0.06);
+  doc.font("Helvetica-Bold").fontSize(80);
+  doc.text(text, 0, pageH / 2 - 60, { width: pageW, align: "center" });
+  doc.opacity(1).restore();
+}
 
-doc.restore();
+function drawSeal() {
+  // Simple “seal” circle (premium look)
+  const cx = pageW / 2;
+  const cy = 195;
 
-// ---- Signature placeholders (optional) ----
-doc.save();
-doc.strokeColor("#999999").lineWidth(1);
+  doc.save();
+  // Outer circle
+  doc.strokeColor(GOLD).lineWidth(3);
+  doc.circle(cx, cy, 38).stroke();
 
-const sigY = 620;
-const leftSigX1 = inner + 70;
-const leftSigX2 = inner + 260;
+  // Inner circle
+  doc.strokeColor(GOLD_DARK).lineWidth(1);
+  doc.circle(cx, cy, 30).stroke();
 
-const rightSigX1 = pageW - inner - 260;
-const rightSigX2 = pageW - inner - 70;
+  // Tiny ribbon lines
+  doc.strokeColor(GOLD).lineWidth(2);
+  doc.moveTo(cx - 18, cy + 42).lineTo(cx - 6, cy + 64).stroke();
+  doc.moveTo(cx + 18, cy + 42).lineTo(cx + 6, cy + 64).stroke();
 
-doc.moveTo(leftSigX1, sigY).lineTo(leftSigX2, sigY).stroke();
-doc.moveTo(rightSigX1, sigY).lineTo(rightSigX2, sigY).stroke();
+  // Seal text
+  doc.fillColor(GOLD_DARK).font("Helvetica-Bold").fontSize(10);
+  doc.text("OFFICIAL", cx - 28, cy - 7, { width: 56, align: "center" });
+  doc.restore();
+}
 
-doc.fillColor("#666666").font(FONT_SANS).fontSize(10);
-doc.text("Instructor", leftSigX1, sigY + 6, { width: leftSigX2 - leftSigX1, align: "center" });
-doc.text("Program Director", rightSigX1, sigY + 6, { width: rightSigX2 - rightSigX1, align: "center" });
+function drawSignatureBlock(leftX, y, label, name) {
+  doc.save();
+  doc.strokeColor("#999999").lineWidth(1);
+  doc.moveTo(leftX, y).lineTo(leftX + 200, y).stroke();
+  doc.fillColor(SOFT).font("Helvetica").fontSize(9).text(label, leftX, y + 6, { width: 200, align: "center" });
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text(name, leftX, y + 22, { width: 200, align: "center" });
+  doc.restore();
+}
 
-doc.restore();
+// --- Background + borders ---
+drawBorder();
+drawWatermark("CERTIFIED");
+
+// --- Header ---
+centerText("Certificate of Completion", 88, 32, { font: "Helvetica-Bold", color: INK });
+centerText("Eritrean Success Journey", 132, 12, { color: SOFT });
+hr(155);
+
+// Seal badge
+drawSeal();
+
+// --- Main copy ---
+// You should already have these variables from your DB queries:
+/// userName, courseTitle, issuedOnStr, certId, verifyUrl
+
+// Fallbacks if missing (safe)
+const safeUserName = (typeof userName !== "undefined" && userName) ? userName : "Student";
+const safeCourseTitle = (typeof courseTitle !== "undefined" && courseTitle) ? courseTitle : "Course";
+const safeIssued = (typeof issuedOnStr !== "undefined" && issuedOnStr) ? issuedOnStr : "";
+const safeCertId = (typeof certId !== "undefined" && certId) ? String(certId) : "";
+const safeVerifyUrl = (typeof verifyUrl !== "undefined" && verifyUrl) ? verifyUrl : "";
+
+// Body text
+centerText("This certificate is proudly presented to", 255, 13, { color: SOFT });
+
+doc.fillColor(INK).font("Helvetica-Bold").fontSize(34);
+doc.text(safeUserName, 0, 282, { width: pageW, align: "center" });
+
+centerText("for successfully completing the course:", 335, 12, { color: SOFT });
+
+doc.fillColor(INK).font("Helvetica-Bold").fontSize(20);
+doc.text(safeCourseTitle, 0, 360, { width: pageW, align: "center" });
+
+hr(410, "#E5D7A8", 1);
+
+// --- Footer info ---
+doc.fillColor(SOFT).font("Helvetica").fontSize(10);
+doc.text(`Issued on: ${safeIssued}`, 0, 445, { width: pageW, align: "center" });
+doc.text(`Certificate ID: ${safeCertId}`, 0, 462, { width: pageW, align: "center" });
+
+// Signatures
+drawSignatureBlock(90, 520, "Authorized Signature", "Eritrean Success Journey");
+drawSignatureBlock(pageW - 290, 520, "Instructor", "Program Team");
+
+// --- QR Code (optional but premium) ---
+if (safeVerifyUrl) {
+  const qrBuf = await QRCode.toBuffer(safeVerifyUrl, { margin: 1, scale: 5 });
+
+  // QR bottom center
+  doc.image(qrBuf, pageW / 2 - 45, 585, { width: 90 });
+
+  doc.fillColor(SOFT).font("Helvetica").fontSize(8);
+  doc.text("Verify this certificate", 0, 678, { width: pageW, align: "center" });
+  doc.fillColor("#0A58CA").font("Helvetica").fontSize(8);
+  doc.text(safeVerifyUrl, 0, 690, { width: pageW, align: "center", link: safeVerifyUrl, underline: true });
+}
 
 // ==================== END GOLD PREMIUM TEMPLATE ====================
 
