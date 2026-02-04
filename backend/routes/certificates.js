@@ -250,179 +250,114 @@ router.post("/claim", requireAuth, async (req, res) => {
 /* ============================================================
    PDF DOWNLOAD — WOW DESIGN + QR + SEAL
    ============================================================ */
-// ======================= PREMIUM PDF CERTIFICATE (PDFKIT) =======================
 router.get("/:courseId/pdf", requireAuth, async (req, res) => {
   try {
-    const courseId = req.params.courseId;
-    const userId = req.user?.id || req.userId; // supports both styles
+    const userId = req.user.id;
+    const { courseId } = req.params;
 
-    // 1) Load data
+    // --- Fetch user ---
     const userR = await query(
-      `SELECT name_en AS name FROM users WHERE id=$1`,
+      "SELECT name FROM users WHERE id = $1",
       [userId]
     );
+    if (!userR.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // --- Fetch course ---
     const courseR = await query(
-      `SELECT title_en AS title FROM courses WHERE id=$1`,
+      "SELECT title_en FROM courses WHERE id = $1",
       [courseId]
     );
+    if (!courseR.rows.length) {
+      return res.status(404).json({ error: "Course not found" });
+    }
 
-    const userName = userR.rows?.[0]?.name || "Student";
-    const courseTitle = courseR.rows?.[0]?.title || courseId;
-
-    // If you already have certificate record, keep your own query here.
-    // This is a safe fallback:
+    // --- Fetch certificate ---
     const certR = await query(
-      `SELECT id, issued_at FROM certificates WHERE user_id=$1 AND course_id=$2 ORDER BY id DESC LIMIT 1`,
+      `SELECT id, issued_at
+       FROM certificates
+       WHERE user_id = $1 AND course_id = $2
+       ORDER BY id DESC
+       LIMIT 1`,
       [userId, courseId]
     );
-    const certId = certR.rows?.[0]?.id ?? 1;
-    const issuedAt = certR.rows?.[0]?.issued_at ?? new Date();
+    if (!certR.rows.length) {
+      return res.status(403).json({ error: "Certificate not claimed" });
+    }
 
-    const issuedOn = new Date(issuedAt).toDateString(); // "Wed Jan 21 2026"
+    const userName = userR.rows[0].name;
+    const courseTitle = courseR.rows[0].title_en;
+    const certId = certR.rows[0].id;
+    const issuedAt = certR.rows[0].issued_at;
 
-    // 2) Verify URL + QR
-    const publicBase =
-      process.env.PUBLIC_API_BASE?.replace(/\/$/, "") ||
-      "https://api.riseeritrea.com";
-    const verifyUrl = `${publicBase}/verify/certificate/${certId}`;
-    const qrData = await QRCode.toBuffer(verifyUrl, {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 220,
-    });
-
-    // 3) Headers
+    // --- Headers ---
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="certificate-${courseId}.pdf"`
+      `inline; filename="certificate-${courseId}.pdf"`
     );
 
-    // 4) Create PDF
+    // --- Create PDF ---
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     doc.pipe(res);
+
+    // ✅ Force page creation (CRITICAL FIX)
+    doc.addPage();
 
     const pageW = doc.page.width;
     const pageH = doc.page.height;
 
-    // Helpers
-    const centerText = (text, y, size, options = {}) => {
-      doc.fontSize(size).text(text, 0, y, {
-        width: pageW,
-        align: "center",
-        ...options,
-      });
+    // --- Helpers ---
+    const center = (text, y, size, color = "#000") => {
+      doc
+        .fillColor(color)
+        .fontSize(size)
+        .text(text, 0, y, { width: pageW, align: "center" });
     };
 
-    // ======================= DESIGN START =======================
+    // --- Background frame ---
+    doc
+      .rect(30, 30, pageW - 60, pageH - 60)
+      .lineWidth(2)
+      .stroke("#C9A44C");
 
-    // Background (very light)
-    doc.save();
-    doc.rect(0, 0, pageW, pageH).fill("#ffffff");
-    doc.restore();
+    // --- Gold seal ---
+    doc
+      .circle(pageW / 2, 140, 35)
+      .fillAndStroke("#D4AF37", "#B8962E");
 
-    // Double border
-    doc.save();
-    doc.lineWidth(2).rect(28, 28, pageW - 56, pageH - 56).stroke("#111111");
-    doc.lineWidth(1).rect(38, 38, pageW - 76, pageH - 76).stroke("#A0A0A0");
-    doc.restore();
+    // --- Title ---
+    center("Certificate of Completion", 210, 32);
+    center("Eritrean Success Journey", 255, 14, "#555");
 
-    // Subtle watermark
-    doc.save();
-    doc.opacity(0.06);
-    doc.fillColor("#000000");
-    doc.font("Helvetica-Bold");
-    doc.fontSize(64).text("Eritrean", 0, pageH / 2 - 80, {
-      width: pageW,
-      align: "center",
-    });
-    doc.fontSize(64).text("Success Journey", 0, pageH / 2 - 20, {
-      width: pageW,
-      align: "center",
-    });
-    doc.opacity(1);
-    doc.restore();
+    center("This certificate is proudly presented to", 310, 14, "#555");
+    center(userName, 345, 26);
 
-    // Title
-    doc.fillColor("#111111");
-    doc.font("Helvetica-Bold");
-    centerText("Certificate of Completion", 110, 34);
+    center("for successfully completing the course", 395, 14, "#555");
+    center(courseTitle, 430, 20);
 
-    doc.font("Helvetica");
-    centerText("Eritrean Success Journey", 160, 14, { fill: "#333333" });
+    // --- Footer ---
+    center(
+      `Issued on: ${new Date(issuedAt).toDateString()}`,
+      pageH - 160,
+      11,
+      "#555"
+    );
+    center(`Certificate ID: ${certId}`, pageH - 135, 10, "#777");
 
-    // Presented to
-    doc.font("Helvetica");
-    centerText("This certificate is proudly presented to", 220, 14, {
-      fill: "#333333",
-    });
+    // --- QR Code ---
+    const verifyUrl = `https://riseeritrea.com/verify/certificate/${certId}`;
+    const qr = await QRCode.toBuffer(verifyUrl);
+    doc.image(qr, pageW / 2 - 40, pageH - 120, { width: 80 });
 
-    doc.font("Helvetica-Bold");
-    centerText(userName, 255, 40, { fill: "#111111" });
-
-    doc.font("Helvetica");
-    centerText("for successfully completing the course:", 320, 14, {
-      fill: "#333333",
-    });
-
-    doc.font("Helvetica-Bold");
-    centerText(courseTitle, 350, 24, { fill: "#111111" });
-
-    // Gold seal (simple premium)
-    const sealX = pageW / 2;
-    const sealY = 455;
-
-    doc.save();
-    doc.lineWidth(3).strokeColor("#b08d57").fillColor("#ffffff");
-    doc.circle(sealX, sealY, 36).stroke();
-
-    doc.font("Helvetica-Bold");
-    doc.fillColor("#b08d57");
-    doc.fontSize(10).text("OFFICIAL", sealX - 30, sealY - 5, {
-      width: 60,
-      align: "center",
-    });
-    doc.restore();
-
-    // Issue date + cert id
-    doc.font("Helvetica");
-    doc.fillColor("#444444");
-    centerText(`Issued on: ${issuedOn}`, pageH - 235, 11);
-    centerText(`Certificate ID: ${certId}`, pageH - 215, 11);
-
-    // Signature lines
-    const sigY = pageH - 170;
-
-    doc.save();
-    doc.strokeColor("#222222");
-    doc.lineWidth(1);
-
-    // Left signature
-    doc.moveTo(80, sigY + 30).lineTo(250, sigY + 30).stroke();
-    doc.fillColor("#222222").font("Helvetica").fontSize(11);
-    doc.text("Program Director", 80, sigY + 40);
-
-    // Right signature
-    doc.moveTo(pageW - 250, sigY + 30).lineTo(pageW - 80, sigY + 30).stroke();
-    doc.text("Instructor", pageW - 250, sigY + 40);
-
-    doc.restore();
-
-    // QR + verify link
-    doc.image(qrData, pageW / 2 - 45, pageH - 140, { width: 90 });
-    doc.font("Helvetica");
-    doc.fillColor("#333333");
-    doc.fontSize(9).text(`Verify: ${verifyUrl}`, 0, pageH - 45, {
-      width: pageW,
-      align: "center",
-    });
-
-    // ======================= DESIGN END =======================
-
+    // --- Finalize ---
     doc.end();
   } catch (err) {
     console.error("PDF ERROR:", err);
-    res.status(500).json({ error: "Server error generating certificate PDF" });
+    res.status(500).json({
+      error: "Server error generating certificate PDF",
+    });
   }
 });
 module.exports = router;
