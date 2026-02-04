@@ -164,11 +164,11 @@ async function loadExamStatus(courseId) {
 }
 
 async function loadCertificateStatus(courseId) {
-  return api(`/certificates/status/${courseId}`);
+ return api(`/certificates/${courseId}/status`);
 }
 
 async function claimCertificate(courseId) {
-  return api(`/certificates/claim`, { method: "POST", body: { courseId } });
+return api(`/certificates/${courseId}/claim`, { method: "POST", body: {} });
 }
 
 // ================= ROUTER =================
