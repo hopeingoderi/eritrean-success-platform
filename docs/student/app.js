@@ -303,6 +303,7 @@ document.getElementById("regBtn").onclick = async () => {
     msg.textContent = "Register failed: " + e.message;
   }
 };
+}
 
 // ================= DASHBOARD =================
 async function renderDashboard() {
@@ -771,7 +772,7 @@ async function renderCert(courseId) {
 }
 
 // ================= BOOT =================
-(function boot() {
+function boot() {
   if (!location.hash) setHash("#/dashboard");
   state.lang = getLang();
   updateNav();
@@ -780,4 +781,5 @@ async function renderCert(courseId) {
   api("/health").catch(() => {});
 
   render();
-})();
+}
+boot();
