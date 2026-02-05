@@ -574,9 +574,20 @@ if (safeVerifyUrl) {
   doc.text("Scan to verify", boxX + boxW - 14 - qrSize, boxY + 82, { width: qrSize, align: "center" });
 }
 
-// Optional tiny footer (still page 1)
-doc.fillColor("#9CA3AF").font("Helvetica").fontSize(9);
-doc.text("© Eritrean Success Journey", 0, pageH - 42, { width: pageW, align: "center" });
+// ---- Footer (LOCKED to page 1) ----
+const footerY = pageH - 52;
+
+// IMPORTANT: always pass x,y for the footer so it never auto-flows to page 2
+doc.save();
+doc.fillColor("#9CA3AF")
+  .font("Helvetica")
+  .fontSize(9)
+  .text("© Eritrean Success Journey", 0, footerY, {
+    width: pageW,
+    align: "center",
+    lineBreak: false
+  });
+doc.restore();
 
 // ==================== END GOLD PREMIUM TEMPLATE ====================
 
