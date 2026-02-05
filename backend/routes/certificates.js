@@ -412,102 +412,173 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 48 });
     doc.pipe(res);
 
-    const pageW = doc.page.width;
-    const pageH = doc.page.height;
+// ======================= GOLD PREMIUM TEMPLATE (PDFKit) =====================
 
-    // Colors
-    const gold = "#C9A227";
-    const dark = "#111827";
-    const gray = "#6B7280";
-    const light = "#F8FAFC";
+// Page constants
+const pageW = doc.page.width;
+const pageH = doc.page.height;
 
-    // Background
-    doc.rect(0, 0, pageW, pageH).fill(light);
+// Colors
+const GOLD = "#C8A84E";
+const GOLD_DARK = "#8A6A1F";
+const INK = "#222222";
+const SOFT = "#666666";
 
-    // Double border
-    doc.save();
-    doc.lineWidth(2).strokeColor(gold).rect(24, 24, pageW - 48, pageH - 48).stroke();
-    doc.lineWidth(1).strokeColor("#D1D5DB").rect(32, 32, pageW - 64, pageH - 64).stroke();
-    doc.restore();
+// Helpers
+function centerText(text, y, size, options = {}) {
+  doc.fillColor(options.color || INK)
+    .font(options.font || "Helvetica")
+    .fontSize(size)
+    .text(text, 0, y, { width: pageW, align: "center" });
+}
 
-    // Watermark (lighter, won’t fight content)
-    doc.save();
-    doc.rotate(-18, { origin: [pageW / 2, pageH / 2] });
-    doc.fillColor("#E5E7EB").font("Helvetica-Bold").fontSize(44);
-    doc.text("ERITREAN SUCCESS JOURNEY", 0, pageH / 2 - 30, {
-      width: pageW,
-      align: "center"
-    });
-    doc.restore();
+function hr(y, color = GOLD, thickness = 1) {
+  doc.save();
+  doc.strokeColor(color).lineWidth(thickness);
+  doc.moveTo(70, y).lineTo(pageW - 70, y).stroke();
+  doc.restore();
+}
 
-    // Header
-    doc.fillColor(dark).font("Helvetica-Bold").fontSize(32);
-    doc.text("Certificate of Completion", 0, 92, { width: pageW, align: "center" });
+function drawBorder() {
+  doc.save();
+  doc.strokeColor(GOLD).lineWidth(4);
+  doc.rect(28, 28, pageW - 56, pageH - 56).stroke();
 
-    doc.fillColor(gray).font("Helvetica").fontSize(13);
-    doc.text("Eritrean Success Journey", 0, 138, { width: pageW, align: "center" });
+  doc.strokeColor(GOLD_DARK).lineWidth(1);
+  doc.rect(40, 40, pageW - 80, pageH - 80).stroke();
+  doc.restore();
+}
 
-    // Divider
-    doc.moveTo(120, 170).lineTo(pageW - 120, 170).lineWidth(1).strokeColor("#E5E7EB").stroke();
+function drawWatermark(text) {
+  doc.save();
+  doc.rotate(-22, { origin: [pageW / 2, pageH / 2] });
+  doc.fillColor("#000000").opacity(0.05);
+  doc.font("Helvetica-Bold").fontSize(76);
+  doc.text(text, 0, pageH / 2 - 60, { width: pageW, align: "center" });
+  doc.opacity(1).restore();
+}
 
-    // Body
-    doc.fillColor(gray).font("Helvetica").fontSize(14);
-    doc.text("This certificate is proudly presented to", 0, 205, { width: pageW, align: "center" });
+function drawSeal(cx, cy, r = 32) {
+  doc.save();
+  doc.strokeColor(GOLD).lineWidth(3);
+  doc.circle(cx, cy, r).stroke();
 
-    doc.fillColor(dark).font("Helvetica-Bold").fontSize(38);
-    doc.text(userName, 0, 238, { width: pageW, align: "center" });
+  doc.strokeColor(GOLD_DARK).lineWidth(1);
+  doc.circle(cx, cy, r - 7).stroke();
 
-    doc.fillColor(gray).font("Helvetica").fontSize(14);
-    doc.text("for successfully completing the course:", 0, 300, { width: pageW, align: "center" });
+  doc.strokeColor(GOLD).lineWidth(2);
+  doc.moveTo(cx - 14, cy + r + 6).lineTo(cx - 5, cy + r + 24).stroke();
+  doc.moveTo(cx + 14, cy + r + 6).lineTo(cx + 5, cy + r + 24).stroke();
 
-    doc.fillColor(dark).font("Helvetica-Bold").fontSize(24);
-    doc.text(courseTitle, 0, 332, { width: pageW, align: "center" });
+  doc.fillColor(GOLD_DARK).font("Helvetica-Bold").fontSize(10);
+  doc.text("OFFICIAL", cx - 28, cy - 7, { width: 56, align: "center" });
+  doc.fillColor(GOLD).font("Helvetica-Bold").fontSize(10);
+  doc.text("CERTIFIED", cx - 34, cy + 6, { width: 68, align: "center" });
+  doc.restore();
+}
 
-    // ✅ Seal moved DOWN so it won't block the main title area
-    const sealX = pageW / 2;
-    const sealY = 420;       // moved down
-    const sealR = 40;        // slightly smaller
+function drawSignatureBlock(leftX, y, label, name) {
+  doc.save();
+  doc.strokeColor("#999999").lineWidth(1);
+  doc.moveTo(leftX, y).lineTo(leftX + 200, y).stroke();
+  doc.fillColor(SOFT).font("Helvetica").fontSize(9)
+    .text(label, leftX, y + 6, { width: 200, align: "center" });
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(10)
+    .text(name, leftX, y + 22, { width: 200, align: "center" });
+  doc.restore();
+}
 
-    doc.save();
-    doc.circle(sealX, sealY, sealR).fill("#FFF7ED");
-    doc.circle(sealX, sealY, sealR).lineWidth(2).strokeColor(gold).stroke();
-    doc.circle(sealX, sealY, sealR - 8).lineWidth(1).strokeColor("#F59E0B").dash(2, { space: 2 }).stroke().undash();
-    doc.fillColor(dark).font("Helvetica-Bold").fontSize(10);
-    doc.text("OFFICIAL", sealX - 28, sealY - 10, { width: 56, align: "center" });
-    doc.fillColor(gold).font("Helvetica-Bold").fontSize(10);
-    doc.text("CERTIFIED", sealX - 34, sealY + 4, { width: 68, align: "center" });
-    doc.restore();
+function truncateToWidth(text, maxWidth) {
+  const s = String(text || "");
+  if (!s) return "";
+  if (doc.widthOfString(s) <= maxWidth) return s;
 
-    // Footer info box (carefully placed to stay on ONE page)
-    const boxH = 92;
-    const boxY = pageH - 48 - boxH - 20; // safe padding
-    doc.save();
-    doc.roundedRect(70, boxY, pageW - 140, boxH, 10).fill("#FFFFFF");
-    doc.roundedRect(70, boxY, pageW - 140, boxH, 10).lineWidth(1).strokeColor("#E5E7EB").stroke();
-    doc.restore();
+  const ell = "…";
+  let out = s;
+  while (out.length > 6 && doc.widthOfString(out + ell) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return out + ell;
+}
 
-    doc.fillColor(gray).font("Helvetica").fontSize(11);
-    doc.text(`Issued on: ${fmtDate(cert.issued_at)}`, 90, boxY + 16, { width: pageW - 180, align: "left" });
-    doc.text(`Certificate ID: ${cert.id}`, 90, boxY + 34, { width: pageW - 180, align: "left" });
+// --- Background + borders ---
+drawBorder();
+drawWatermark("CERTIFIED");
 
-    // Verify URL: truncate to avoid pushing layout / new page
-    doc.fillColor(gray).font("Helvetica").fontSize(10);
-    doc.text("Verify:", 90, boxY + 56, { width: 40, align: "left" });
+// --- Header ---
+centerText("Certificate of Completion", 86, 32, { font: "Helvetica-Bold", color: INK });
+centerText("Eritrean Success Journey", 130, 12, { color: SOFT });
+hr(154);
 
-    doc.fillColor(dark).font("Helvetica").fontSize(10);
-    const maxUrlWidth = (pageW - 180) - 60 - 96; // left text area minus QR
-    const safeUrl = truncateToWidth(doc, verifyUrl, maxUrlWidth);
-    doc.text(safeUrl, 130, boxY + 56, { width: maxUrlWidth, align: "left" });
+// ✅ Seal moved DOWN so it doesn't block the top area
+drawSeal(pageW / 2, 205, 30);
 
-    // QR (bottom-right inside box)
-    const qrSize = 78;
-    doc.image(qrPng, pageW - 70 - qrSize, boxY + 8, { width: qrSize, height: qrSize });
-    doc.fillColor(gray).font("Helvetica").fontSize(8);
-    doc.text("Scan to verify", pageW - 70 - qrSize, boxY + 84, { width: qrSize, align: "center" });
+// --- Main copy ---
+const safeUserName = (userName && String(userName).trim()) ? userName : "Student";
+const safeCourseTitle = (courseTitle && String(courseTitle).trim()) ? courseTitle : "Course";
+const safeIssued = (issuedOnStr && String(issuedOnStr).trim()) ? issuedOnStr : "";
+const safeCertId = (certId != null) ? String(certId) : "";
+const safeVerifyUrl = (verifyUrl && String(verifyUrl).trim()) ? verifyUrl : "";
 
-    // ✅ Footer stays on page (no extra page)
-    doc.fillColor("#9CA3AF").font("Helvetica").fontSize(9);
-    doc.text("© Eritrean Success Journey", 0, pageH - 52, { width: pageW, align: "center" });
+// Body text
+centerText("This certificate is proudly presented to", 250, 13, { color: SOFT });
+
+doc.fillColor(INK).font("Helvetica-Bold").fontSize(34);
+doc.text(safeUserName, 0, 276, { width: pageW, align: "center" });
+
+centerText("for successfully completing the course:", 332, 12, { color: SOFT });
+
+doc.fillColor(INK).font("Helvetica-Bold").fontSize(22);
+doc.text(safeCourseTitle, 0, 356, { width: pageW, align: "center" });
+
+hr(404, "#E5D7A8", 1);
+
+// ✅ Signatures moved a bit UP to leave space for footer box
+drawSignatureBlock(90, 470, "Authorized Signature", "Eritrean Success Journey");
+drawSignatureBlock(pageW - 290, 470, "Instructor", "Program Team");
+
+// ✅ Bottom info box (keeps everything inside page → NO PAGE 2)
+const boxX = 80;
+const boxW = pageW - 160;
+const boxH = 88;
+const boxY = pageH - 120; // safely above bottom edge on A4
+
+doc.save();
+doc.roundedRect(boxX, boxY, boxW, boxH, 10).fill("#FFFFFF");
+doc.roundedRect(boxX, boxY, boxW, boxH, 10).lineWidth(1).strokeColor("#E5E7EB").stroke();
+doc.restore();
+
+doc.fillColor(SOFT).font("Helvetica").fontSize(10);
+doc.text(`Issued on: ${safeIssued}`, boxX + 14, boxY + 16);
+doc.text(`Certificate ID: ${safeCertId}`, boxX + 14, boxY + 34);
+
+// Verify URL line (truncate so it never wraps to a new page)
+doc.text("Verify:", boxX + 14, boxY + 52);
+doc.fillColor("#0A58CA").font("Helvetica").fontSize(10);
+
+const qrSize = 70;
+const urlMaxWidth = boxW - 14 - 14 - 46 - qrSize - 18; // leave room for QR on right
+const urlText = truncateToWidth(safeVerifyUrl, urlMaxWidth);
+
+doc.text(urlText, boxX + 60, boxY + 52, {
+  width: urlMaxWidth,
+  link: safeVerifyUrl || undefined,
+  underline: true
+});
+
+// QR on the right inside the box (never touches bottom)
+if (safeVerifyUrl) {
+  const qrBuf = await QRCode.toBuffer(safeVerifyUrl, { margin: 1, scale: 5 });
+  doc.image(qrBuf, boxX + boxW - 14 - qrSize, boxY + 10, { width: qrSize, height: qrSize });
+  doc.fillColor(SOFT).font("Helvetica").fontSize(8);
+  doc.text("Scan to verify", boxX + boxW - 14 - qrSize, boxY + 82, { width: qrSize, align: "center" });
+}
+
+// Optional tiny footer (still page 1)
+doc.fillColor("#9CA3AF").font("Helvetica").fontSize(9);
+doc.text("© Eritrean Success Journey", 0, pageH - 42, { width: pageW, align: "center" });
+
+// ==================== END GOLD PREMIUM TEMPLATE ====================
 
     doc.end();
   } catch (e) {
