@@ -19,9 +19,10 @@ const state = {
   user: null,
   lang: "en", // "en" | "ti"
   courses: [],
-  lessonsByCourse: {},    // courseId -> lessons[]
-  progressByCourse: {},   // courseId -> progress object
-  examStatusByCourse: {}  // courseId -> { passed, score }
+  lessonsByCourse: {},     // courseId -> lessons[]
+  progressByCourse: {},    // courseId -> { courseId, byLessonIndex }
+  progressStatus: null,    // { status: [{courseId,totalLessons,completedLessons,hasCertificate}] }
+  examStatusByCourse: {},  // courseId -> { passed, score, ... }
 };
 
 // ================= HELPERS =================
@@ -48,12 +49,11 @@ function isLoggedIn() { return !!state.user; }
 
 // ✅ robust query builder (won’t break when path already has ?)
 function withLang(path) {
-  // only add lang for endpoints that use it (courses/lessons/exams GET)
+  // only add lang for endpoints that use it
   const needsLang =
     path.startsWith("/courses") ||
     path.startsWith("/lessons/") ||
-    (path.startsWith("/exams/") && !path.includes("/submit")) ||
-    path.startsWith("/exams/status");
+    (path.startsWith("/exams/") && !path.includes("/submit"));
 
   if (!needsLang) return path;
 
@@ -76,11 +76,11 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
-// ✅ IMPORTANT: normalize lesson fields (your backend uses `learn`, not `learnText`)
+// ✅ normalize lesson fields (backend may use learn/learnText + lesson_index/lessonIndex)
 function normalizeLesson(raw = {}) {
   return {
     id: raw.id,
-    courseId: raw.courseId,
+    courseId: raw.courseId || raw.course_id,
     lessonIndex: Number(raw.lessonIndex ?? raw.lesson_index ?? 0),
     title: raw.title ?? raw.title_en ?? raw.title_ti ?? "",
     learnText:
@@ -98,6 +98,11 @@ function progressFor(courseId, lessonIndex) {
 
 function courseFallbackOrder(courseId) {
   return ({ foundation: 1, growth: 2, excellence: 3 }[courseId] || 999);
+}
+
+function getProgressStatusRow(courseId) {
+  const list = state.progressStatus?.status || [];
+  return list.find(x => x.courseId === courseId) || null;
 }
 
 // ================= NAV =================
@@ -158,17 +163,47 @@ async function loadProgress(courseId) {
   state.progressByCourse[courseId] = r || {};
 }
 
+async function loadProgressStatus() {
+  const r = await api("/progress/status");
+  state.progressStatus = r || { status: [] };
+  return state.progressStatus;
+}
+
 async function loadExamStatus(courseId) {
   const r = await api(`/exams/status/${courseId}`);
   state.examStatusByCourse[courseId] = r || { passed: false, score: null };
+  return state.examStatusByCourse[courseId];
 }
 
+// ---- Certificate helpers (SAFE) ----
+// We compute a reliable status even if /certificates/:courseId/status changes.
 async function loadCertificateStatus(courseId) {
- return api(`/certificates/${courseId}/status`);
+  // always refresh progressStatus + examStatus so UI never shows undefined
+  await loadProgressStatus();
+  const ex = await loadExamStatus(courseId);
+
+  const row = getProgressStatusRow(courseId);
+  const totalLessons = row?.totalLessons ?? 0;
+  const completedLessons = row?.completedLessons ?? 0;
+  const examPassed = !!ex?.passed;
+
+  let certApi = {};
+  try {
+    certApi = await api(`/certificates/${courseId}/status`);
+  } catch {
+    certApi = {};
+  }
+
+  const issued = !!certApi.issued || !!row?.hasCertificate;
+  const eligible = (certApi.eligible != null)
+    ? !!certApi.eligible
+    : (totalLessons > 0 && completedLessons >= totalLessons && examPassed);
+
+  return { totalLessons, completedLessons, examPassed, issued, eligible };
 }
 
 async function claimCertificate(courseId) {
-return api(`/certificates/${courseId}/claim`, { method: "POST", body: {} });
+  return api(`/certificates/${courseId}/claim`, { method: "POST", body: {} });
 }
 
 // ================= ROUTER =================
@@ -240,11 +275,11 @@ function renderRegister() {
     <div class="card">
       <div class="h1">Register</div>
 
- <label>First name</label>
-<input id="first_name" type="text" placeholder="First name" />
+      <label>First name</label>
+      <input id="first_name" type="text" placeholder="First name" />
 
-<label>Last name</label>
-<input id="last_name" type="text" placeholder="Last name" />
+      <label>Last name</label>
+      <input id="last_name" type="text" placeholder="Last name" />
 
       <label>Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
@@ -258,51 +293,43 @@ function renderRegister() {
     </div>
   `;
 
-document.getElementById("regBtn").onclick = async () => {
-  const first_name = document.getElementById("first_name").value.trim();
-  const last_name  = document.getElementById("last_name").value.trim();
-  const email      = document.getElementById("email").value.trim();
-  const password   = document.getElementById("password").value.trim();
+  document.getElementById("regBtn").onclick = async () => {
+    const first_name = document.getElementById("first_name").value.trim();
+    const last_name  = document.getElementById("last_name").value.trim();
+    const email      = document.getElementById("email").value.trim();
+    const password   = document.getElementById("password").value.trim();
 
-  const msg = document.getElementById("msg");
-  msg.textContent = "";
+    const msg = document.getElementById("msg");
+    msg.textContent = "";
 
-  // ✅ VALIDATION 
-  if (!first_name || !last_name) {
-    msg.textContent = "First and last name are required";
-    return;
-  }
+    // ✅ VALIDATION
+    if (!first_name || !last_name) {
+      msg.textContent = "First and last name are required";
+      return;
+    }
+    if (!email) {
+      msg.textContent = "Email is required";
+      return;
+    }
+    if (password.length < 6) {
+      msg.textContent = "Password must be at least 6 characters";
+      return;
+    }
 
-  if (!email) {
-    msg.textContent = "Email is required";
-    return;
-  }
+    try {
+      const r = await api("/auth/register", {
+        method: "POST",
+        body: { first_name, last_name, email, password }
+      });
 
-  if (password.length < 6) {
-    msg.textContent = "Password must be at least 6 characters";
-    return;
-  }
-
-  // ✅ THEN the API call
-  try {
-    const r = await api("/auth/register", {
-      method: "POST",
-      body: {
-        first_name,
-        last_name,
-        email,
-        password
-      }
-    });
-
-    state.user = r.user;
-    updateNav();
-    setHash("#/dashboard");
-    render();
-  } catch (e) {
-    msg.textContent = "Register failed: " + e.message;
-  }
-};
+      state.user = r.user;
+      updateNav();
+      setHash("#/dashboard");
+      render();
+    } catch (e) {
+      msg.textContent = "Register failed: " + e.message;
+    }
+  };
 }
 
 // ================= DASHBOARD =================
@@ -323,20 +350,15 @@ async function renderDashboard() {
     <div id="coursesWrap"></div>
   `;
 
-  document.getElementById("langEn").onclick = async () => {
-    setLang("en");
-    renderDashboard();
-  };
-  document.getElementById("langTi").onclick = async () => {
-    setLang("ti");
-    renderDashboard();
-  };
+  document.getElementById("langEn").onclick = () => { setLang("en"); renderDashboard(); };
+  document.getElementById("langTi").onclick = () => { setLang("ti"); renderDashboard(); };
 
   try {
-    await loadCourses();
+    // ✅ Faster + avoids undefined: one call for all lesson counts
+    await Promise.all([loadCourses(), loadProgressStatus()]);
   } catch (e) {
     document.getElementById("coursesWrap").innerHTML =
-      `<div class="card"><div class="small">Failed to load courses: ${escapeHtml(e.message)}</div></div>`;
+      `<div class="card"><div class="small">Failed to load dashboard: ${escapeHtml(e.message)}</div></div>`;
     return;
   }
 
@@ -366,25 +388,21 @@ async function renderDashboard() {
     btn.onclick = () => { setHash(`#/cert/${btn.getAttribute("data-open-cert")}`); render(); };
   });
 
+  // ✅ Load all exam statuses in parallel (fast) + render meta without fetching lessons
+  await Promise.all(state.courses.map(async (c) => {
+    try { await loadExamStatus(c.id); } catch {}
+  }));
+
   for (const c of state.courses) {
     const metaEl = document.getElementById(`dashMeta_${c.id}`);
     if (!metaEl) continue;
 
-    try {
-      await loadLessons(c.id);
-      await loadProgress(c.id);
-      await loadExamStatus(c.id);
+    const row = getProgressStatusRow(c.id);
+    const done = row?.completedLessons ?? 0;
+    const total = row?.totalLessons ?? 0;
 
-      const lessons = state.lessonsByCourse[c.id] || [];
-      const pmap = state.progressByCourse[c.id]?.byLessonIndex || {};
-      const done = Object.values(pmap).filter(x => x && x.completed).length;
-      const total = lessons.length;
-
-      const exam = state.examStatusByCourse[c.id] || {};
-      metaEl.innerHTML = `Lessons: <b>${done}</b> / ${total} • Exam: <b>${exam.passed ? "PASSED ✅" : "Not passed"}</b>`;
-    } catch {
-      metaEl.textContent = "";
-    }
+    const exam = state.examStatusByCourse[c.id] || {};
+    metaEl.innerHTML = `Lessons: <b>${done}</b> / ${total} • Exam: <b>${exam.passed ? "PASSED ✅" : "Not passed"}</b>`;
   }
 }
 
@@ -415,8 +433,7 @@ async function renderCourse(courseId) {
   document.getElementById("openCert").onclick = () => { setHash(`#/cert/${courseId}`); render(); };
 
   try {
-    await loadLessons(courseId);
-    await loadProgress(courseId);
+    await Promise.all([loadLessons(courseId), loadProgress(courseId)]);
   } catch (e) {
     document.getElementById("lessonsWrap").innerHTML =
       `<div class="card"><div class="small">Failed to load lessons/progress: ${escapeHtml(e.message)}</div></div>`;
@@ -512,7 +529,6 @@ async function renderLesson(courseId, lessonIndex) {
   const prevExists = lessons.some(x => x.lessonIndex === lessonIndex - 1);
   const nextExists = lessons.some(x => x.lessonIndex === lessonIndex + 1);
 
-  // ✅ THIS IS THE FIX: lesson.learnText is normalized from lesson.learn
   document.getElementById("lessonCard").innerHTML = `
     <div class="h2">${escapeHtml(lesson.title || "")}</div>
 
@@ -614,13 +630,22 @@ async function renderExam(courseId) {
     return;
   }
 
+  // If your backend returns latestAttempt, show it. Otherwise show status endpoint info.
+  let latest = examData.latestAttempt || null;
+  try {
+    const st = await loadExamStatus(courseId);
+    if (!latest && st && (st.score != null || st.passed != null)) latest = st;
+  } catch {}
+
   const passScore = examData.passScore ?? 70;
   const questions = examData.exam?.questions || [];
-  const latest = examData.latestAttempt || null;
 
   document.getElementById("examMeta").innerHTML = `
     Pass score: <b>${passScore}%</b>
-    ${latest ? ` • Last score: <b>${latest.score}%</b> ${latest.passed ? "✅ PASSED" : "❌"}` : ""}
+    ${latest && (latest.score != null)
+      ? ` • Last score: <b>${latest.score}%</b> ${latest.passed ? "✅ PASSED" : "❌"}`
+      : ""
+    }
   `;
 
   if (!questions.length) {
@@ -671,7 +696,7 @@ async function renderExam(courseId) {
     try {
       const r = await api(`/exams/${courseId}/submit`, {
         method: "POST",
-        body: { answers, lang: state.lang }
+        body: { answers, lang: state.lang } // backend can ignore lang if not needed
       });
 
       msg.textContent = r.passed
@@ -772,14 +797,13 @@ async function renderCert(courseId) {
 }
 
 // ================= BOOT =================
-function boot() {
+(function boot() {
   if (!location.hash) setHash("#/dashboard");
   state.lang = getLang();
   updateNav();
 
-  // 🔥 Wake up the API (Render cold start)
+  // 🔥 Wake up API (Render cold start)
   api("/health").catch(() => {});
 
   render();
-}
-boot();
+})();
