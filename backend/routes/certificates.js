@@ -244,191 +244,162 @@ router.post("/:courseId/claim", requireAuth, async (req, res) => {
    PDF (WOW, ONE PAGE)
 ========================= */
 
+/* =========================
+   PDF (WOW, ONE PAGE)
+   GET /api/certificates/:courseId/pdf
+========================= */
+
 router.get("/:courseId/pdf", requireAuth, async (req, res) => {
   try {
     const courseId = safeCourseId(req.params.courseId);
-    const userId = getUserId(req);
+    const userId = req.user?.id || req.session?.user?.id;
 
     if (!courseId) return res.status(400).json({ error: "Invalid courseId" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    // Ensure eligible + cert exists (idempotent)
+    // Ensure certificate exists (idempotent creation)
     const cert = await ensureCertificate({ userId, courseId });
     const { userName, courseTitle } = await getUserAndCourse({ userId, courseId });
 
     const verifyUrl = `${publicBase(req)}/api/certificates/verify/${cert.id}`;
 
-    // ✅ 1) HEADERS FIRST
+    // ✅ HEADERS FIRST
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="certificate-${filenameSafe(courseId)}.pdf"`
+      `inline; filename="certificate-${filenameSafe(courseId)}-${cert.id}.pdf"`
     );
 
-    // ✅ 2) CREATE DOC AFTER HEADERS
-    const doc = new PDFDocument({ size: "A4", margin: 48 });
+    // ✅ One-page PDF (no auto page breaks from margins)
+    const doc = new PDFDocument({ size: "A4", margin: 0 });
     doc.pipe(res);
 
-    const pageW = doc.page.width;
-    const pageH = doc.page.height;
+    const W = doc.page.width;   // ~595.28
+    const H = doc.page.height;  // ~841.89
 
-    // Colors
-    const GOLD = "#C8A84E";
-    const GOLD_DARK = "#8A6A1F";
-    const INK = "#111827";
-    const SOFT = "#6B7280";
-    const PAPER = "#F8FAFC";
+    // ---------- Background (clean + premium) ----------
+    doc.rect(0, 0, W, H).fill("#fbfbff"); // soft white
 
-    // Helpers
-    const center = (text, y, size, opts = {}) => {
-      doc
-        .fillColor(opts.color || INK)
-        .font(opts.font || "Helvetica")
-        .fontSize(size)
-        .text(text, 0, y, { width: pageW, align: "center" });
-    };
+    // Premium border
+    doc
+      .lineWidth(3)
+      .strokeColor("#c8a24a")
+      .rect(22, 22, W - 44, H - 44)
+      .stroke();
 
-    const hr = (y, color = "#E5E7EB") => {
-      doc.save();
-      doc.strokeColor(color).lineWidth(1);
-      doc.moveTo(90, y).lineTo(pageW - 90, y).stroke();
-      doc.restore();
-    };
+    doc
+      .lineWidth(1)
+      .strokeColor("#e7d39b")
+      .rect(32, 32, W - 64, H - 64)
+      .stroke();
 
-    const clamp = (s, max = 70) => {
-      const t = String(s || "");
-      return t.length > max ? t.slice(0, max - 1) + "…" : t;
-    };
-
-    // Background
-    doc.rect(0, 0, pageW, pageH).fill(PAPER);
-
-    // Premium double border
+    // Watermark
     doc.save();
-    doc.lineWidth(3).strokeColor(GOLD).rect(24, 24, pageW - 48, pageH - 48).stroke();
-    doc.lineWidth(1).strokeColor("#D1D5DB").rect(34, 34, pageW - 68, pageH - 68).stroke();
+    doc.rotate(-25, { origin: [W / 2, H / 2] });
+    doc.fillColor("#d9dde6");
+    doc.font("Helvetica-Bold").fontSize(64).opacity(0.18);
+    doc.text("CERTIFIED", 0, H / 2 - 60, { align: "center", width: W });
+    doc.opacity(1);
     doc.restore();
 
-    // Watermark (light, doesn’t block content)
-    doc.save();
-    doc.rotate(-18, { origin: [pageW / 2, pageH / 2] });
-    doc.fillColor("#111827").opacity(0.05).font("Helvetica-Bold").fontSize(58);
-    doc.text("ERITREAN SUCCESS JOURNEY", 0, pageH / 2 - 50, { width: pageW, align: "center" });
-    doc.opacity(1).restore();
+    // ---------- Header ----------
+    doc.fillColor("#111827");
+    doc.font("Helvetica-Bold").fontSize(34);
+    doc.text("Certificate of Completion", 0, 95, { align: "center", width: W });
 
-    // Header
-    center("Certificate of Completion", 86, 32, { font: "Helvetica-Bold", color: INK });
-    center("Eritrean Success Journey", 128, 12, { color: SOFT });
-    hr(156);
+    doc.fillColor("#374151");
+    doc.font("Helvetica").fontSize(12);
+    doc.text("Eritrean Success Journey", 0, 140, { align: "center", width: W });
 
-    // Quote (short + elegant)
-    doc.fillColor(SOFT).font("Helvetica-Oblique").fontSize(11);
-    doc.text(`“${INSPIRING_QUOTE}”`, 110, 174, {
-      width: pageW - 220,
-      align: "center"
-    });
+    // Quote
+    doc.fillColor("#1f4b99");
+    doc.font("Helvetica-Oblique").fontSize(12);
+    doc.text(`“${INSPIRING_QUOTE}”`, 80, 175, { align: "center", width: W - 160 });
 
-    // Body
-    center("This certificate is proudly presented to", 230, 13, { color: SOFT });
+    // ---------- Student + Course ----------
+    doc.fillColor("#374151");
+    doc.font("Helvetica").fontSize(13);
+    doc.text("This certificate is proudly presented to", 0, 245, { align: "center", width: W });
 
-    // Student name + optional suffix
-    const nameLine = OFFICIAL_SUFFIX_ENABLED
-      ? `${clamp(userName, 44)} — Officially Certified`
-      : clamp(userName, 52);
+    // Name
+    doc.fillColor("#111827");
+    doc.font("Helvetica-Bold").fontSize(30);
+    doc.text(userName, 70, 275, { align: "center", width: W - 140 });
 
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(34);
-    doc.text(nameLine, 0, 258, { width: pageW, align: "center" });
+    // Officially certified badge text
+    doc.fillColor("#0f766e");
+    doc.font("Helvetica-Bold").fontSize(13);
+    doc.text("OFFICIALLY CERTIFIED", 0, 320, { align: "center", width: W });
 
-    center("for successfully completing the course:", 320, 12, { color: SOFT });
+    doc.fillColor("#374151");
+    doc.font("Helvetica").fontSize(12);
+    doc.text("for successfully completing the course:", 0, 350, { align: "center", width: W });
 
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(20);
-    doc.text(clamp(courseTitle, 62), 0, 345, { width: pageW, align: "center" });
+    doc.fillColor("#111827");
+    doc.font("Helvetica-Bold").fontSize(22);
+    doc.text(courseTitle, 60, 375, { align: "center", width: W - 120 });
 
-    hr(390, "#E5D7A8");
+    // Decorative seal (simple premium circle)
+    doc
+      .lineWidth(2)
+      .strokeColor("#c8a24a")
+      .circle(W / 2, 470, 42)
+      .stroke();
+    doc
+      .lineWidth(1)
+      .strokeColor("#e7d39b")
+      .circle(W / 2, 470,34)
+      .stroke();
 
-    // Seal (kept below text so it doesn't block)
-    const sealX = pageW / 2;
-    const sealY = 440;
-    doc.save();
-    doc.circle(sealX, sealY, 40).fill("#FFF7ED");
-    doc.circle(sealX, sealY, 40).lineWidth(2).strokeColor(GOLD).stroke();
-    doc.circle(sealX, sealY, 32).lineWidth(1).strokeColor("#F59E0B").dash(2, { space: 2 }).stroke().undash();
-    doc.fillColor(GOLD_DARK).font("Helvetica-Bold").fontSize(10);
-    doc.text("CERTIFIED", sealX - 34, sealY - 5, { width: 68, align: "center" });
-    doc.restore();
+    doc.fillColor("#c8a24a").font("Helvetica-Bold").fontSize(10);
+    doc.text("CERTIFIED", W / 2 - 30, 466, { width: 60, align: "center" });
 
-    // Info lines
-    const issuedStr = fmtDate(cert.issued_at);
-    doc.fillColor(SOFT).font("Helvetica").fontSize(10);
-    doc.text(`Issued on: ${issuedStr}`, 0, 492, { width: pageW, align: "center" });
-    doc.text(`Certificate ID: ${cert.id}`, 0, 508, { width: pageW, align: "center" });
+    // ---------- Footer Info ----------
+    const issued = fmtDate(cert.issued_at);
 
-    // Signatures area
-    const sigY = 560;
+    doc.fillColor("#374151").font("Helvetica").fontSize(10);
+    doc.text(`Issued on: ${issued}`, 60, 560);
+    doc.text(`Certificate ID: ${cert.id}`, 60, 575);
 
-    // Founder signature image (transparent PNG)
-    const sigExists = fs.existsSync(SIGNATURE_PATH);
-    if (sigExists) {
-      try {
-        const sigBuf = fs.readFileSync(SIGNATURE_PATH);
-        // left signature image
-        doc.image(sigBuf, 105, sigY - 22, { width: 180 });
-      } catch (e) {
-        console.warn("Signature image load failed:", e.message);
-      }
+    // ---------- Signature (transparent PNG) ----------
+    const signatureExists = fs.existsSync(SIGNATURE_PATH);
+    if (signatureExists) {
+      const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+      doc.image(sigBuf, 95, 610, { width: 170 }); // adjust if needed
     }
 
-    // Signature lines + labels
-    doc.save();
-    doc.strokeColor("#9CA3AF").lineWidth(1);
+    // Founder text (under signature)
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
+    doc.text(FOUNDER_NAME, 70, 690, { width: 220, align: "center" });
 
-    // left block
-    doc.moveTo(95, sigY + 20).lineTo(305, sigY + 20).stroke();
-    doc.fillColor(SOFT).font("Helvetica").fontSize(9);
-    doc.text(FOUNDER_TITLE, 95, sigY + 26, { width: 210, align: "center" });
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(10);
-    doc.text(FOUNDER_NAME, 95, sigY + 40, { width: 210, align: "center" });
+    doc.fillColor("#6b7280").font("Helvetica").fontSize(9);
+    doc.text(FOUNDER_TITLE, 70, 705, { width: 220, align: "center" });
 
-    // right block
-    doc.moveTo(pageW - 305, sigY + 20).lineTo(pageW - 95, sigY + 20).stroke();
-    doc.fillColor(SOFT).font("Helvetica").fontSize(9);
-    doc.text("Authorized by", pageW - 305, sigY + 26, { width: 210, align: "center" });
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(10);
-    doc.text(PROGRAM_TEAM, pageW - 305, sigY + 40, { width: 210, align: "center" });
+    // Program team (right)
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
+    doc.text("Authorized by", W - 290, 680, { width: 220, align: "center" });
+    doc.text(PROGRAM_TEAM, W - 290, 695, { width: 220, align: "center" });
 
-    doc.restore();
+    // Signature lines
+    doc.strokeColor("#cbd5e1").lineWidth(1);
+    doc.moveTo(70, 670).lineTo(290, 670).stroke();
+    doc.moveTo(W - 290, 670).lineTo(W - 70, 670).stroke();
 
-    // QR + verify link (kept high enough so NO 2nd page)
+    // ---------- QR Code (PNG buffer) ----------
     const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png", margin: 1, scale: 6 });
+    doc.image(qrPng, W - 175, 720, { width: 95 });
 
-    const qrSize = 84;
-    const qrX = pageW / 2 - qrSize / 2;
-    const qrY = 645; // ✅ safe on one page
+    doc.fillColor("#6b7280").font("Helvetica").fontSize(8);
+    doc.text("Scan to verify", W - 190, 820, { width: 140, align: "center" });
 
-    doc.image(qrPng, qrX, qrY, { width: qrSize, height: qrSize });
+    // Tiny verify URL (optional)
+    doc.fillColor("#1f4b99").font("Helvetica").fontSize(7);
+    doc.text(verifyUrl, 60, 820, { width: W - 240, align: "left" });
 
-    doc.fillColor(SOFT).font("Helvetica").fontSize(8);
-    doc.text("Scan to verify", 0, qrY + qrSize + 6, { width: pageW, align: "center" });
-
-    // IMPORTANT: keep this above ~800 to avoid page 2
-    doc.fillColor("#2563EB").font("Helvetica").fontSize(8);
-    doc.text(verifyUrl, 0, qrY + qrSize + 18, {
-      width: pageW,
-      align: "center",
-      link: verifyUrl,
-      underline: true
-    });
-
-    // Footer
-    doc.fillColor("#9CA3AF").font("Helvetica").fontSize(9);
-    doc.text("© Eritrean Success Journey", 0, 790, { width: pageW, align: "center" });
-
-    // ✅ END (must be last)
+    // ✅ END PDF
     doc.end();
-  } catch (e) {
-    console.error("CERT PDF ERROR:", e);
-    // If headers were already sent, just end the response safely
-    if (res.headersSent) return res.end();
+  } catch (err) {
+    console.error("CERT PDF ERROR:", err);
     return res.status(500).json({ error: "Server error generating certificate PDF" });
   }
 });
