@@ -68,6 +68,14 @@ function escapeHtml(str = "") {
   }[m]));
 }
 
+function titleCaseName(name = "") {
+  return String(name)
+    .trim()
+    .split(/\s+/)
+    .map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : "")
+    .join(" ");
+}
+
 // Read userId safely from your middleware style (req.user OR req.session.user)
 function getUserId(req) {
   return req.user?.id || req.session?.user?.id || null;
@@ -298,7 +306,7 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     doc.rotate(-25, { origin: [W / 2, H / 2] });
     doc.fillColor("#d9dde6");
     doc.font("Helvetica-Bold").fontSize(64).opacity(0.18);
-    doc.text("CERTIFIED", 0, H / 2 - 60, { align: "center", width: W });
+    doc.text("ERITREAN SUCCESS JOURNEY", 0, H / 2 - 60, { align: "center", width: W });
     doc.opacity(1);
     doc.restore();
 
@@ -323,8 +331,9 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
 
     // Name
     doc.fillColor("#111827");
-    doc.font("Helvetica-Bold").fontSize(30);
-    doc.text(userName, 70, 275, { align: "center", width: W - 140 });
+    doc.font("Helvetica-Bold").fontSize(32);
+    const displayName = titleCaseName(userName);
+    doc.text(displayName, 70, 275, { align: "center", width: W - 140 });
 
     // Officially certified badge text
     doc.fillColor("#0f766e");
@@ -358,15 +367,20 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     const issued = fmtDate(cert.issued_at);
 
     doc.fillColor("#374151").font("Helvetica").fontSize(10);
-    doc.text(`Issued on: ${issued}`, 60, 560);
-    doc.text(`Certificate ID: ${cert.id}`, 60, 575);
+    doc.text(`Issued on: ${issued}`, 70, 545);
+    doc.text(`Certificate ID: ${cert.id}`, 70, 560);
 
     // ---------- Signature (transparent PNG) ----------
     const signatureExists = fs.existsSync(SIGNATURE_PATH);
     if (signatureExists) {
-      const sigBuf = fs.readFileSync(SIGNATURE_PATH);
-      doc.image(sigBuf, 95, 610, { width: 170 }); // adjust if needed
-    }
+    const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+
+    // make sure signature is strong + visible
+    doc.save();
+    doc.opacity(1);              // important
+    doc.image(sigBuf, 95, 595, { width: 220 });  // bigger + slightly higher
+    doc.restore();
+}
 
     // Founder text (under signature)
     doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
@@ -386,15 +400,28 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     doc.moveTo(W - 290, 670).lineTo(W - 70, 670).stroke();
 
     // ---------- QR Code (PNG buffer) ----------
-    const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png", margin: 1, scale: 6 });
-    doc.image(qrPng, W - 175, 720, { width: 95 });
+    const qrY = 680;
 
-    doc.fillColor("#6b7280").font("Helvetica").fontSize(8);
-    doc.text("Scan to verify", W - 190, 820, { width: 140, align: "center" });
+    const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png" });
+    doc.image(qrPng, W - 175, qrY, { width: 95 });
 
-    // Tiny verify URL (optional)
-    doc.fillColor("#1f4b99").font("Helvetica").fontSize(7);
-    doc.text(verifyUrl, 60, 820, { width: W - 240, align: "left" });
+    // Scan label
+    doc.fillColor("#6b7280")
+      .font("Helvetica")
+      .fontSize(8);
+    doc.text("Scan to verify", W - 190, qrY + 105, {
+      width: 140,
+      align: "center",
+    });
+
+    // Tiny verify URL
+    doc.fillColor("#1f4b99")
+      .font("Helvetica")
+      .fontSize(7);
+    doc.text(verifyUrl, 60, qrY + 105, {
+      width: W - 240,
+      align: "left",
+    });
 
     // ✅ END PDF
     doc.end();
