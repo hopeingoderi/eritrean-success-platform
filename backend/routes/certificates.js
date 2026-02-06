@@ -363,66 +363,84 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     doc.fillColor("#c8a24a").font("Helvetica-Bold").fontSize(10);
     doc.text("CERTIFIED", W / 2 - 30, 466, { width: 60, align: "center" });
 
-    // ---------- Footer (ONE PAGE, SAFE LAYOUT) ----------
-  const issued = fmtDate(cert.issued_at);
+    // ---------- Footer (DYNAMIC, ONE CONTROL POINT) ----------
+    const issued = fmtDate(cert.issued_at);
 
-  // 🔧 MASTER CONTROL (move the whole footer up/down)
-  const footerY = 620;
+    // safety area above bottom border
+    const pad = 22;
+    const safeBottom = 62;                 // keep away from border
+    const contentBottom = H - pad - safeBottom;
 
-  // Relative positions (do not hardcode random Y values elsewhere)
-  const leftInfoY     = footerY;        // Issued + ID
-  const sigY          = footerY + 20;    // Signature image
-  const lineY         = footerY + 55;    // Signature lines
-  const founderTextY  = footerY + 70;    // Founder name/title under signature
-  const rightTextY    = footerY + 70;    // Program Team text
-  const qrY           = footerY + 30;    // QR position
+    // layout sizes
+    const leftX = 70;
+    const rightBlockW = 220;
+    const leftBlockW = 240;
+    const rightX = W - 70 - rightBlockW;
 
-  // ---------- Left info (ABOVE signature area) ----------
-  doc.fillColor("#374151").font("Helvetica").fontSize(10);
-  doc.text(`Issued on: ${issued}`, 70, leftInfoY);
-  doc.text(`Certificate ID: ${cert.id}`, 70, leftInfoY + 14);
+    // spacing
+    const gap = 18;
 
-  // ---------- Signature lines (left + right) ----------
-  doc.strokeColor("#cbd5e1").lineWidth(1);
-  doc.moveTo(70, lineY).lineTo(290, lineY).stroke();
-  doc.moveTo(W - 290, lineY).lineTo(W - 70, lineY).stroke();
+    // master line Y (signature line position)
+    const lineY = contentBottom - 42;      // move this up/down if needed
 
-  // ---------- Signature image (LEFT block) ----------
-  if (fs.existsSync(SIGNATURE_PATH)) {
-    const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+    // derived Ys (relative)
+    const leftInfoY = lineY - 34;
+    const sigY = lineY - 32;               // signature image sits above the line
+    const founderNameY = lineY + 10;
+    const founderTitleY = founderNameY + 14;
 
-    doc.save();
-    doc.opacity(1); // ✅ important if watermark changed opacity earlier
-    doc.image(sigBuf, 80, sigY, { width: 210 }); // ✅ USE sigBuf
-    doc.restore();
-  }
+    const rightTitleY = lineY + 8;
+    const rightTeamY = rightTitleY + 14;
 
-  // ---------- Founder text (under signature) ----------
-  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
-  doc.text(FOUNDER_NAME, 70, founderTextY, { width: 220, align: "center" });
+    const qrSize = 92;
+    const qrY = contentBottom - qrSize;
+    const qrX = W - 70 - qrSize;
 
-  doc.fillColor("#6b7280").font("Helvetica").fontSize(9);
-  doc.text(FOUNDER_TITLE, 70, founderTextY + 14, { width: 220, align: "center" });
+    // ---- Left info (Issued + ID) ----
+    doc.fillColor("#374151").font("Helvetica").fontSize(10);
+    doc.text(`Issued on: ${issued}`, leftX, leftInfoY);
+    doc.text(`Certificate ID: ${cert.id}`, leftX, leftInfoY + 14);
 
-  // ---------- QR (BOTTOM RIGHT) ----------
-  const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png" });
-  doc.image(qrPng, W - 155, qrY, { width: 85 });
+    // ---- Signature lines (left + right) ----
+    doc.strokeColor("#cbd5e1").lineWidth(1);
+    doc.moveTo(leftX, lineY).lineTo(leftX + 220, lineY).stroke();
+    doc.moveTo(rightX, lineY).lineTo(rightX + rightBlockW, lineY).stroke();
 
-  // Scan label (under QR)
-  doc.fillColor("#6b7280").font("Helvetica").fontSize(8);
-  doc.text("Scan to verify", W - 175, qrY + 90, { width: 130, align: "center" });
+    // ---- Signature image (LEFT) ----
+    if (fs.existsSync(SIGNATURE_PATH)) {
+      const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+      doc.save();
+      doc.opacity(1);
+      doc.image(sigBuf, leftX + 8, sigY, { width: 210 }); // adjust width if needed
+      doc.restore();
+    }
 
-  // ---------- Program Team (RIGHT block - SAFE from QR) ----------
-  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
-  doc.text("Authorized by", W - 310, rightTextY, { width: 140, align: "center" });
-  doc.text(PROGRAM_TEAM, W - 310, rightTextY + 14, { width: 140, align: "center" });
+    // ---- Founder text (under signature) ----
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
+    doc.text(FOUNDER_NAME, leftX, founderNameY, { width: leftBlockW, align: "center" });
 
-  // ---------- Tiny verify URL (left of QR) ----------
-  doc.fillColor("#1f4b99").font("Helvetica").fontSize(7);
-  doc.text(verifyUrl, 70, qrY + 92, { width: W - 260, align: "left" });
+    doc.fillColor("#6b7280").font("Helvetica").fontSize(9);
+    doc.text(FOUNDER_TITLE, leftX, founderTitleY, { width: leftBlockW, align: "center" });
 
-  // ---------- END PDF ----------
-  doc.end();
+    // ---- Program team (RIGHT) ----
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
+    doc.text("Authorized by", rightX, rightTitleY, { width: rightBlockW, align: "center" });
+    doc.text(PROGRAM_TEAM, rightX, rightTeamY, { width: rightBlockW, align: "center" });
+
+    // ---- QR code (BOTTOM RIGHT) ----
+    const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png" });
+    doc.image(qrPng, qrX, qrY, { width: qrSize });
+
+    // Scan label
+    doc.fillColor("#6b7280").font("Helvetica").fontSize(8);
+    doc.text("Scan to verify", rightX, qrY + qrSize + 6, { width: rightBlockW, align: "center" });
+
+    // Tiny verify URL (BOTTOM LEFT area)
+    doc.fillColor("#1f4b99").font("Helvetica").fontSize(7);
+    doc.text(verifyUrl, leftX, qrY + qrSize + 6, { width: W - 140 - qrSize - gap, align: "left" });
+        
+      // ---------- END PDF ----------
+    doc.end();
 
   } catch (err) {
     console.error("CERT PDF ERROR:", err);
