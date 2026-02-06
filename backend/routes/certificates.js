@@ -16,6 +16,7 @@ const PDFDocument = require("pdfkit");
 const QRCode = require("qrcode");
 const { query } = require("../db_pg");
 const { requireAuth } = require("../middleware/auth");
+const OFFICIAL_SUFFIX_ENABLED = true;
 
 const router = express.Router();
 
