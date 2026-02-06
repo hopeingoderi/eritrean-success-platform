@@ -364,67 +364,108 @@ router.get("/:courseId/pdf", requireAuth, async (req, res) => {
     doc.text("CERTIFIED", W / 2 - 30, 466, { width: 60, align: "center" });
 
     // ---------- Footer Info ----------
-    const issued = fmtDate(cert.issued_at);
+const issued = fmtDate(cert.issued_at);
 
-    doc.fillColor("#374151").font("Helvetica").fontSize(10);
-    doc.text(`Issued on: ${issued}`, 70, 545);
-    doc.text(`Certificate ID: ${cert.id}`, 70, 560);
+// 🔧 ONE CONTROL POINT (move everything up/down)
+const footerY = 650;
 
-    // ---------- Signature (transparent PNG) ----------
-    const signatureExists = fs.existsSync(SIGNATURE_PATH);
-    if (signatureExists) {
-    const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+// Left info (issued + certificate ID)
+doc.fillColor("#374151")
+  .font("Helvetica")
+  .fontSize(10);
 
-    // make sure signature is strong + visible
-    doc.save();
-    doc.opacity(1);              // important
-    doc.image(sigBuf, 95, 595, { width: 220 });  // bigger + slightly higher
-    doc.restore();
+doc.text(`Issued on: ${issued}`, 70, footerY);
+doc.text(`Certificate ID: ${cert.id}`, 70, footerY + 15);
+
+// ---------- Signature (transparent PNG) ----------
+const signatureExists = fs.existsSync(SIGNATURE_PATH);
+
+if (signatureExists) {
+  const sigBuf = fs.readFileSync(SIGNATURE_PATH);
+
+  doc.save();
+  doc.opacity(1); // ensure visibility
+  doc.image(sigBuf, 90, footerY - 10, {
+    width: 180,
+  });
+  doc.restore();
 }
 
-    // Founder text (under signature)
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
-    doc.text(FOUNDER_NAME, 70, 690, { width: 220, align: "center" });
+// Founder name (under signature)
+doc.fillColor("#111827")
+  .font("Helvetica-Bold")
+  .fontSize(10);
 
-    doc.fillColor("#6b7280").font("Helvetica").fontSize(9);
-    doc.text(FOUNDER_TITLE, 70, 705, { width: 220, align: "center" });
+doc.text(FOUNDER_NAME, 70, footerY + 35, {
+  width: 220,
+  align: "center",
+});
 
-    // Program team (right)
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10);
-    doc.text("Authorized by", W - 290, 680, { width: 220, align: "center" });
-    doc.text(PROGRAM_TEAM, W - 290, 695, { width: 220, align: "center" });
+// Founder title
+doc.fillColor("#6b7280")
+  .font("Helvetica")
+  .fontSize(9);
 
-    // Signature lines
-    doc.strokeColor("#cbd5e1").lineWidth(1);
-    doc.moveTo(70, 670).lineTo(290, 670).stroke();
-    doc.moveTo(W - 290, 670).lineTo(W - 70, 670).stroke();
+doc.text(FOUNDER_TITLE, 70, footerY + 50, {
+  width: 220,
+  align: "center",
+});
 
-    // ---------- QR Code (PNG buffer) ----------
-    const qrY = 680;
+// ---------- Program Team (right side) ----------
+doc.fillColor("#111827")
+  .font("Helvetica-Bold")
+  .fontSize(10);
 
-    const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png" });
-    doc.image(qrPng, W - 175, qrY, { width: 95 });
+doc.text("Authorized by", W - 290, footerY + 25, {
+  width: 220,
+  align: "center",
+});
 
-    // Scan label
-    doc.fillColor("#6b7280")
-      .font("Helvetica")
-      .fontSize(8);
-    doc.text("Scan to verify", W - 190, qrY + 105, {
-      width: 140,
-      align: "center",
-    });
+doc.text(PROGRAM_TEAM, W - 290, footerY + 40, {
+  width: 220,
+  align: "center",
+});
 
-    // Tiny verify URL
-    doc.fillColor("#1f4b99")
-      .font("Helvetica")
-      .fontSize(7);
-    doc.text(verifyUrl, 60, qrY + 105, {
-      width: W - 240,
-      align: "left",
-    });
+// ---------- Signature Lines ----------
+doc.strokeColor("#cbd5e1").lineWidth(1);
 
-    // ✅ END PDF
-    doc.end();
+doc.moveTo(70, footerY + 20)
+  .lineTo(290, footerY + 20)
+  .stroke();
+
+doc.moveTo(W - 290, footerY + 20)
+  .lineTo(W - 70, footerY + 20)
+  .stroke();
+
+// ---------- QR Code ----------
+const qrY = footerY + 30;
+
+const qrPng = await QRCode.toBuffer(verifyUrl, { type: "png" });
+doc.image(qrPng, W - 175, qrY, { width: 95 });
+
+// Scan label
+doc.fillColor("#6b7280")
+  .font("Helvetica")
+  .fontSize(8);
+
+doc.text("Scan to verify", W - 190, qrY + 105, {
+  width: 140,
+  align: "center",
+});
+
+// Tiny verify URL
+doc.fillColor("#1f4b99")
+  .font("Helvetica")
+  .fontSize(7);
+
+doc.text(verifyUrl, 60, qrY + 105, {
+  width: W - 240,
+  align: "left",
+});
+
+// ---------- END PDF ----------
+doc.end();
+
   } catch (err) {
     console.error("CERT PDF ERROR:", err);
     return res.status(500).json({ error: "Server error generating certificate PDF" });
