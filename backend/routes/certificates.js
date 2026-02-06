@@ -132,7 +132,6 @@ async function getExistingCertificate({ userId, courseId }) {
       LIMIT 1`,
     [userId, courseId]
   );
-A
   return r.rows[0] || null;
 }
 
