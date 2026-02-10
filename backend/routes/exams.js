@@ -24,17 +24,51 @@ function safeJsonParse(str, fallback = null) {
 }
 
 /**
- * ✅ FIX for dashboard 404 + slow loading
- * GET /api/exams/status/:courseId?lang=en|ti
- * Returns whether user completed exam + score/pass
+ * Helper: extract "correct" index/value from many possible shapes
+ * Supports: correctIndex, correct, answer, correctAnswer
  */
-router.get("/status/:courseId", requireAuth, async (req, res) => {
+function getCorrectValue(q) {
+  if (!q || typeof q !== "object") return null;
+
+  if (Number.isInteger(q.correctIndex)) return q.correctIndex;
+
+  // common: correct: 0 / 1 / 2 ...
+  if (Number.isInteger(q.correct)) return q.correct;
+
+  // common: answer: 0 / 1 / 2 ...
+  if (Number.isInteger(q.answer)) return q.answer;
+
+  // sometimes boolean true/false
+  if (typeof q.correct === "boolean") return q.correct ? 1 : 0;
+  if (typeof q.answer === "boolean") return q.answer ? 1 : 0;
+
+  // sometimes stored as string "0"/"1"/"2"
+  if (typeof q.correct === "string" && q.correct.trim() !== "" && !Number.isNaN(Number(q.correct))) {
+    return Number(q.correct);
+  }
+  if (typeof q.answer === "string" && q.answer.trim() !== "" && !Number.isNaN(Number(q.answer))) {
+    return Number(q.answer);
+  }
+
+  // sometimes: correctAnswer
+  if (Number.isInteger(q.correctAnswer)) return q.correctAnswer;
+  if (typeof q.correctAnswer === "string" && q.correctAnswer.trim() !== "" && !Number.isNaN(Number(q.correctAnswer))) {
+    return Number(q.correctAnswer);
+  }
+
+  return null;
+}
+
+/**
+ * ✅ FIX: add route that frontend calls:
+ * GET /api/exams/:courseId/status
+ * (Keep old /status/:courseId too, for compatibility)
+ */
+async function handleStatus(req, res) {
   const userId = req.user?.id;
   const courseId = req.params.courseId;
 
-  if (!userId) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   const r = await query(
     `
@@ -54,7 +88,11 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
     score: row?.score ?? null,
     updated_at: row?.updated_at ?? null,
   });
-});
+}
+
+router.get("/:courseId/status", requireAuth, handleStatus);
+router.get("/status/:courseId", requireAuth, handleStatus);
+
 /**
  * GET /api/exams/:courseId?lang=en|ti
  * Returns exam definition + passScore
@@ -98,7 +136,7 @@ router.get("/:courseId", requireAuth, async (req, res) => {
  * Returns the user's attempt for this exam (if exists)
  */
 router.get("/:courseId/attempt", requireAuth, async (req, res) => {
-  const userId = req.user?.id;          // ✅ changed
+  const userId = req.user?.id;
   const courseId = req.params.courseId;
 
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -114,26 +152,20 @@ router.get("/:courseId/attempt", requireAuth, async (req, res) => {
 });
 
 /**
- * POST /api/exams/:courseId/submit
- * Body: { score: number } 0..100
+ * ✅ FIX: POST /api/exams/:courseId/submit
+ * Accepts { answers: number[] } (preferred) OR { score: number } (fallback)
  * Stores attempt and returns pass/fail
  */
 router.post("/:courseId/submit", requireAuth, async (req, res) => {
-  const userId = req.user?.id;          // ✅ changed
+  const userId = req.user?.id;
   const courseId = req.params.courseId;
 
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-  const score = req.body?.score;
-
-  // Validate score
-  if (typeof score !== "number" || Number.isNaN(score) || score < 0 || score > 100) {
-    return res.status(400).json({ error: "Invalid score (0..100 required)" });
-  }
-
-  // Get pass score
+  // Load exam def (we need pass_score + exam_json for scoring)
+  const lang = getLang(req);
   const defR = await query(
-    `SELECT pass_score
+    `SELECT pass_score, exam_json_en, exam_json_ti
      FROM exam_defs
      WHERE course_id = $1`,
     [courseId]
@@ -144,6 +176,65 @@ router.post("/:courseId/submit", requireAuth, async (req, res) => {
   }
 
   const passScore = defR.rows[0].pass_score;
+
+  // ---- Compute score ----
+  let score = null;
+
+  // 1) Preferred: answers-based scoring
+  const answers = req.body?.answers;
+  if (Array.isArray(answers)) {
+    const jsonStr = lang === "ti" ? defR.rows[0].exam_json_ti : defR.rows[0].exam_json_en;
+    const exam = safeJsonParse(jsonStr, null);
+
+    const questions = Array.isArray(exam?.questions) ? exam.questions : null;
+    if (!questions) {
+      return res.status(500).json({ error: "Exam JSON missing questions[]", courseId, lang });
+    }
+
+    const n = Math.min(questions.length, answers.length);
+    let correct = 0;
+    let total = 0;
+
+    for (let i = 0; i < n; i++) {
+      const q = questions[i];
+      const expected = getCorrectValue(q);
+      const picked = answers[i];
+
+      // skip if exam doesn't contain a valid correct answer for this question
+      if (expected === null || expected === undefined) continue;
+
+      total++;
+      if (Number(picked) === Number(expected)) correct++;
+    }
+
+    // If we couldn't score anything, return clear error (prevents "Invalid score" confusion)
+    if (total === 0) {
+      return res.status(500).json({
+        error: "Could not score exam (no correct answers found in exam_json)",
+        courseId,
+        lang,
+      });
+    }
+
+    score = Math.round((correct / total) * 100);
+  }
+
+  // 2) Fallback: accept score directly (keeps old clients working)
+  if (score === null || score === undefined) {
+    const providedScore = req.body?.score;
+    if (typeof providedScore === "number" && !Number.isNaN(providedScore)) {
+      score = providedScore;
+    }
+  }
+
+  // Validate score (final)
+  if (typeof score !== "number" || Number.isNaN(score) || score < 0 || score > 100) {
+    return res.status(400).json({
+      error: "Invalid score (0..100 required)",
+      hint: "Send { answers: [...] } or { score: number }",
+    });
+  }
+
   const passed = score >= passScore;
 
   // Upsert attempt
