@@ -626,11 +626,12 @@ async function renderExam(courseId) {
   try {
     examData = await api(`/exams/${courseId}`);
   } catch (e) {
-    document.getElementById("examCard").innerHTML = `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
+    document.getElementById("examCard").innerHTML =
+      `<div class="small">Failed: ${escapeHtml(e.message)}</div>`;
     return;
   }
 
-  // If your backend returns latestAttempt, show it. Otherwise show status endpoint info.
+  // If backend returns latestAttempt, show it; else fallback to status endpoint
   let latest = examData.latestAttempt || null;
   try {
     const st = await loadExamStatus(courseId);
@@ -649,23 +650,26 @@ async function renderExam(courseId) {
   `;
 
   if (!questions.length) {
-    document.getElementById("examCard").innerHTML = `<div class="small">Exam not configured yet.</div>`;
+    document.getElementById("examCard").innerHTML =
+      `<div class="small">Exam not configured yet.</div>`;
     return;
   }
 
+  // Build UI with ids + data attributes so we can mark results later
   const qHtml = questions.map((q, i) => {
     const opts = (q.options || []).map((opt, oi) => `
-      <label class="quizOption">
+      <label class="quizOption" id="q_${i}_opt_${oi}" data-q="${i}" data-opt="${oi}">
         <input type="radio" name="q_${i}" value="${oi}" />
         <div><b>${escapeHtml(opt)}</b></div>
       </label>
     `).join("");
 
     return `
-      <div class="card" style="background:rgba(255,255,255,.03)">
+      <div class="card" id="qcard_${i}" style="background:rgba(255,255,255,.03)">
         <div class="h2" style="font-size:16px;">${i + 1}. ${escapeHtml(q.text || "")}</div>
         <div style="height:8px"></div>
         ${opts}
+        <div class="small" id="q_${i}_msg" style="margin-top:8px;"></div>
       </div>
     `;
   }).join("");
@@ -674,11 +678,89 @@ async function renderExam(courseId) {
     <div class="small">Answer all questions, then submit.</div>
     <div style="height:10px"></div>
     ${qHtml}
-    <button class="btn primary" id="submitExam">Submit Exam</button>
+    <div class="row" style="gap:10px; margin-top:10px;">
+      <button class="btn primary" id="submitExam">Submit Exam</button>
+      <button class="btn" id="retryExam" style="display:none;">Retry</button>
+    </div>
     <div class="small" id="examMsg" style="margin-top:10px;"></div>
   `;
 
-  document.getElementById("submitExam").onclick = async () => {
+  const btnSubmit = document.getElementById("submitExam");
+  const btnRetry = document.getElementById("retryExam");
+
+  function clearMarks() {
+    for (let i = 0; i < questions.length; i++) {
+      document.getElementById(`qcard_${i}`).style.outline = "none";
+      document.getElementById(`q_${i}_msg`).textContent = "";
+      for (let oi = 0; oi < (questions[i].options || []).length; oi++) {
+        const el = document.getElementById(`q_${i}_opt_${oi}`);
+        if (!el) continue;
+        el.style.outline = "none";
+        el.style.opacity = "1";
+      }
+    }
+  }
+
+  function applyResults(results) {
+    // results item: { index, picked, correct, isCorrect }
+    clearMarks();
+
+    for (const r of results || []) {
+      const i = r.index;
+
+      // Mark question card
+      const qCard = document.getElementById(`qcard_${i}`);
+      if (qCard) {
+        qCard.style.outline = r.isCorrect ? "2px solid rgba(34,197,94,.6)" : "2px solid rgba(239,68,68,.6)";
+        qCard.style.borderRadius = "10px";
+      }
+
+      // Fade all options slightly
+      const optCount = (questions[i]?.options || []).length;
+      for (let oi = 0; oi < optCount; oi++) {
+        const el = document.getElementById(`q_${i}_opt_${oi}`);
+        if (el) el.style.opacity = "0.65";
+      }
+
+      // Highlight correct option
+      const correctEl = document.getElementById(`q_${i}_opt_${r.correct}`);
+      if (correctEl) {
+        correctEl.style.opacity = "1";
+        correctEl.style.outline = "2px solid rgba(34,197,94,.7)";
+        correctEl.style.borderRadius = "10px";
+      }
+
+      // Highlight picked option
+      const pickedEl = document.getElementById(`q_${i}_opt_${r.picked}`);
+      if (pickedEl) {
+        pickedEl.style.opacity = "1";
+        pickedEl.style.outline = r.isCorrect
+          ? "2px solid rgba(34,197,94,.7)"
+          : "2px solid rgba(239,68,68,.7)";
+        pickedEl.style.borderRadius = "10px";
+      }
+
+      // Per-question message
+      const msgEl = document.getElementById(`q_${i}_msg`);
+      if (msgEl) {
+        msgEl.textContent = r.isCorrect ? "✅ Correct" : "❌ Wrong (correct option highlighted)";
+      }
+    }
+  }
+
+  btnRetry.onclick = () => {
+    // Clear selected answers
+    for (let i = 0; i < questions.length; i++) {
+      const picked = document.querySelector(`input[name="q_${i}"]:checked`);
+      if (picked) picked.checked = false;
+    }
+    clearMarks();
+    document.getElementById("examMsg").textContent = "Try again when ready.";
+    btnRetry.style.display = "none";
+    btnSubmit.disabled = false;
+  };
+
+  btnSubmit.onclick = async () => {
     const msg = document.getElementById("examMsg");
     msg.textContent = "Submitting...";
 
@@ -693,19 +775,28 @@ async function renderExam(courseId) {
       return;
     }
 
+    btnSubmit.disabled = true;
+
     try {
       const r = await api(`/exams/${courseId}/submit`, {
         method: "POST",
-        body: { answers, lang: state.lang } // backend can ignore lang if not needed
+        body: { answers } // backend ignores lang now; keep it simple
       });
 
       msg.textContent = r.passed
         ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
-        : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%) — try again.`;
+        : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%) — please retry.`;
+
+      // ✅ Show per-question correction
+      if (Array.isArray(r.results)) applyResults(r.results);
+
+      // Show retry if failed
+      if (!r.passed) btnRetry.style.display = "inline-block";
 
       await loadExamStatus(courseId);
     } catch (e) {
       msg.textContent = "Submit failed: " + e.message;
+      btnSubmit.disabled = false;
     }
   };
 }
