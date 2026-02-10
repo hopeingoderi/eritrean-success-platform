@@ -159,101 +159,62 @@ router.get("/:courseId/attempt", requireAuth, async (req, res) => {
 router.post("/:courseId/submit", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const courseId = req.params.courseId;
+  const { answers } = req.body;
 
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  if (!Array.isArray(answers)) {
+    return res.status(400).json({ error: "Answers array required" });
+  }
 
-  // Load exam def (we need pass_score + exam_json for scoring)
-  const lang = getLang(req);
+  // Load exam definition
   const defR = await query(
-    `SELECT pass_score, exam_json_en, exam_json_ti
+    `SELECT pass_score, exam_json_en
      FROM exam_defs
      WHERE course_id = $1`,
     [courseId]
   );
 
   if (!defR.rows.length) {
-    return res.status(404).json({ error: "Exam not found", courseId });
+    return res.status(404).json({ error: "Exam not found" });
   }
 
+  const exam = JSON.parse(defR.rows[0].exam_json_en);
+  const questions = exam.questions || [];
+
+  // Compute results
+  let correctCount = 0;
+  const results = questions.map((q, i) => {
+    const picked = answers[i];
+    const correct = q.correctIndex;
+    const isCorrect = picked === correct;
+    if (isCorrect) correctCount++;
+    return { index: i, picked, correct, isCorrect };
+  });
+
+  // Score
+  const score = Math.round((correctCount / questions.length) * 100);
   const passScore = defR.rows[0].pass_score;
-
-  // ---- Compute score ----
-  let score = null;
-
-  // 1) Preferred: answers-based scoring
-  const answers = req.body?.answers;
-  if (Array.isArray(answers)) {
-    const jsonStr = lang === "ti" ? defR.rows[0].exam_json_ti : defR.rows[0].exam_json_en;
-    const exam = safeJsonParse(jsonStr, null);
-
-    const questions = Array.isArray(exam?.questions) ? exam.questions : null;
-    if (!questions) {
-      return res.status(500).json({ error: "Exam JSON missing questions[]", courseId, lang });
-    }
-
-    const n = Math.min(questions.length, answers.length);
-    let correct = 0;
-    let total = 0;
-
-    for (let i = 0; i < n; i++) {
-      const q = questions[i];
-      const expected = getCorrectValue(q);
-      const picked = answers[i];
-
-      // skip if exam doesn't contain a valid correct answer for this question
-      if (expected === null || expected === undefined) continue;
-
-      total++;
-      if (Number(picked) === Number(expected)) correct++;
-    }
-
-    // If we couldn't score anything, return clear error (prevents "Invalid score" confusion)
-    if (total === 0) {
-      return res.status(500).json({
-        error: "Could not score exam (no correct answers found in exam_json)",
-        courseId,
-        lang,
-      });
-    }
-
-    score = Math.round((correct / total) * 100);
-  }
-
-  // 2) Fallback: accept score directly (keeps old clients working)
-  if (score === null || score === undefined) {
-    const providedScore = req.body?.score;
-    if (typeof providedScore === "number" && !Number.isNaN(providedScore)) {
-      score = providedScore;
-    }
-  }
-
-  // Validate score (final)
-  if (typeof score !== "number" || Number.isNaN(score) || score < 0 || score > 100) {
-    return res.status(400).json({
-      error: "Invalid score (0..100 required)",
-      hint: "Send { answers: [...] } or { score: number }",
-    });
-  }
-
   const passed = score >= passScore;
 
-  // Upsert attempt
+  // Store attempt
   await query(
-    `INSERT INTO exam_attempts (user_id, course_id, score, passed, updated_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (user_id, course_id) DO UPDATE SET
+    `INSERT INTO exam_attempts
+      (user_id, course_id, score, passed, answers, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (user_id, course_id)
+     DO UPDATE SET
        score = EXCLUDED.score,
        passed = EXCLUDED.passed,
+       answers = EXCLUDED.answers,
        updated_at = NOW()`,
-    [userId, courseId, score, passed]
+    [userId, courseId, score, passed, JSON.stringify(results)]
   );
 
   return res.json({
-    ok: true,
-    courseId,
-    score,
     passed,
+    score,
     passScore,
+    results
   });
 });
 
