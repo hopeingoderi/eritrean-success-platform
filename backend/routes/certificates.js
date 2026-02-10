@@ -114,10 +114,10 @@ async function checkEligibility({ userId, courseId }) {
   // latest attempt determines status
   const examR = await query(
     `SELECT passed, score, updated_at
-       FROM exam_attempts
-      WHERE user_id=$1 AND course_id=$2
-      ORDER BY updated_at DESC NULLS LAST, id DESC
-      LIMIT 1`,
+    FROM exam_attempts
+    WHERE user_id=$1 AND course_id=$2
+    ORDER BY updated_at DESC NULLS LAST
+    LIMIT 1`,
     [userId, courseId]
   );
 
