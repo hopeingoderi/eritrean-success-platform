@@ -782,27 +782,27 @@ async function renderExam(courseId) {
 
     btnSubmit.disabled = true;
 
-    try {
-      const r = await api(`/exams/${courseId}/submit`, {
-        method: "POST",
-        body: { answers } // backend ignores lang now; keep it simple
-      });
+ try {
+  const r = await api(`/exams/${courseId}/submit`, {
+    method: "POST",
+    body: { answers } // (or { answers, lang: state.lang } if you want)
+  });
 
-      msg.textContent = r.passed
-        ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
-        : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%) — please retry.`;
+  msg.textContent = r.passed
+    ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
+    : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%)`;
 
-      // ✅ Show per-question correction
-      if (Array.isArray(r.results)) applyResults(r.results);
+  // ✅ Use your existing function
+  if (Array.isArray(r.results)) applyResults(r.results);
 
-      // Show retry if failed
-      if (!r.passed) btnRetry.style.display = "inline-block";
+  if (!r.passed) btnRetry.style.display = "inline-block";
 
-      await loadExamStatus(courseId);
-    } catch (e) {
-      msg.textContent = "Submit failed: " + e.message;
-      btnSubmit.disabled = false;
-    }
+  await loadExamStatus(courseId);
+
+} catch (e) {
+  msg.textContent = "Submit failed: " + e.message;
+  btnSubmit.disabled = false;
+}
   };
 }
 
