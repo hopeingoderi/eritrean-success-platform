@@ -17,52 +17,57 @@ function safeJsonParse(str, fallback = null) {
   }
 }
 
-// ✅ Retry policy (0 = unlimited)
-const MAX_ATTEMPTS_PER_COURSE = 3;
+// ✅ Configure retry policy here
+const MAX_ATTEMPTS_PER_COURSE = 3; // set to null for unlimited
 
 /**
  * GET /api/exams/status/:courseId
- * returns: attemptCount + latest attempt fields (for UI meta)
+ * returns latest attempt + attemptCount
  */
 router.get("/status/:courseId", requireAuth, async (req, res) => {
-  const userId = req.user?.id;
-  const courseId = req.params.courseId;
+  try {
+    const userId = req.user?.id;
+    const courseId = req.params.courseId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const countR = await query(
+      `SELECT COUNT(*)::int AS c
+       FROM exam_attempts
+       WHERE user_id = $1 AND course_id = $2`,
+      [userId, courseId]
+    );
 
-  const countR = await query(
-    `
-      SELECT COUNT(*)::int AS attempt_count
-      FROM exam_attempts
-      WHERE user_id = $1 AND course_id = $2
-    `,
-    [userId, courseId]
-  );
+    const latestR = await query(
+      `SELECT id, score, passed, created_at, updated_at
+       FROM exam_attempts
+       WHERE user_id = $1 AND course_id = $2
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [userId, courseId]
+    );
 
-  const latestR = await query(
-    `
-      SELECT id, score, passed, created_at, updated_at
-      FROM exam_attempts
-      WHERE user_id = $1 AND course_id = $2
-      ORDER BY created_at DESC, id DESC
-      LIMIT 1
-    `,
-    [userId, courseId]
-  );
+    const row = latestR.rows[0] || null;
+    const attemptCount = countR.rows[0]?.c ?? 0;
 
-  const attemptCount = countR.rows[0]?.attempt_count ?? 0;
-  const latest = latestR.rows[0] || null;
+    return res.json({
+      courseId,
+      attemptCount,
+      maxAttempts: MAX_ATTEMPTS_PER_COURSE ?? null,
+      remainingAttempts:
+        MAX_ATTEMPTS_PER_COURSE == null
+          ? null
+          : Math.max(0, MAX_ATTEMPTS_PER_COURSE - attemptCount),
 
-  res.json({
-    courseId,
-    attemptCount,
-    maxAttempts: MAX_ATTEMPTS_PER_COURSE || null,
-    attempted: !!latest,
-    passed: latest?.passed ?? false,
-    score: latest?.score ?? null,
-    created_at: latest?.created_at ?? null,
-    updated_at: latest?.updated_at ?? null,
-  });
+      attempted: !!row,
+      passed: row?.passed ?? false,
+      score: row?.score ?? null,
+      created_at: row?.created_at ?? null,
+      updated_at: row?.updated_at ?? null,
+    });
+  } catch (e) {
+    console.error("EXAMS STATUS ERROR:", e);
+    return res.status(500).json({ error: e.message || "Server error" });
+  }
 });
 
 /**
@@ -70,126 +75,130 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
  * returns exam definition + passScore
  */
 router.get("/:courseId", requireAuth, async (req, res) => {
-  const courseId = req.params.courseId;
-  const lang = getLang(req);
+  try {
+    const courseId = req.params.courseId;
+    const lang = getLang(req);
 
-  const r = await query(
-    `
-      SELECT pass_score, exam_json_en, exam_json_ti
-      FROM exam_defs
-      WHERE course_id = $1
-    `,
-    [courseId]
-  );
+    const r = await query(
+      `SELECT pass_score, exam_json_en, exam_json_ti
+       FROM exam_defs
+       WHERE course_id = $1`,
+      [courseId]
+    );
 
-  if (!r.rows.length) {
-    return res.status(404).json({ error: "Exam not found", courseId });
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Exam not found", courseId });
+    }
+
+    const def = r.rows[0];
+    const jsonStr = lang === "ti" ? def.exam_json_ti : def.exam_json_en;
+    const exam = safeJsonParse(jsonStr, null);
+
+    if (!exam) {
+      return res.status(500).json({ error: "Exam JSON invalid in DB", courseId, lang });
+    }
+
+    return res.json({ courseId, passScore: def.pass_score, exam });
+  } catch (e) {
+    console.error("GET EXAM ERROR:", e);
+    return res.status(500).json({ error: e.message || "Server error" });
   }
-
-  const def = r.rows[0];
-  const jsonStr = lang === "ti" ? def.exam_json_ti : def.exam_json_en;
-  const exam = safeJsonParse(jsonStr, null);
-
-  if (!exam) {
-    return res.status(500).json({
-      error: "Exam JSON invalid in DB",
-      courseId,
-      lang,
-    });
-  }
-
-  res.json({ courseId, passScore: def.pass_score, exam });
 });
 
 /**
  * POST /api/exams/:courseId/submit
  * Body: { answers: number[] }
- * stores NEW attempt each submission + returns per-question results
+ * stores NEW attempt each time + returns results
  */
 router.post("/:courseId/submit", requireAuth, async (req, res) => {
-  const userId = req.user?.id;
-  const courseId = req.params.courseId;
-  const { answers } = req.body;
+  try {
+    const userId = req.user?.id;
+    const courseId = req.params.courseId;
+    const { answers } = req.body;
 
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
-  if (!Array.isArray(answers)) {
-    return res.status(400).json({ error: "Answers array required" });
-  }
-
-  // Enforce attempt limit (if enabled)
-  if (MAX_ATTEMPTS_PER_COURSE && MAX_ATTEMPTS_PER_COURSE > 0) {
-    const cnt = await query(
-      `
-        SELECT COUNT(*)::int AS c
-        FROM exam_attempts
-        WHERE user_id = $1 AND course_id = $2
-      `,
-      [userId, courseId]
-    );
-    const attemptCount = cnt.rows[0]?.c ?? 0;
-
-    if (attemptCount >= MAX_ATTEMPTS_PER_COURSE) {
-      return res.status(403).json({
-        error: "Max attempts reached",
-        attemptCount,
-        maxAttempts: MAX_ATTEMPTS_PER_COURSE,
-      });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!Array.isArray(answers)) {
+      return res.status(400).json({ error: "Answers array required" });
     }
-  }
 
-  // Load exam definition (use EN for grading; correctIndex should match)
-  const defR = await query(
-    `
-      SELECT pass_score, exam_json_en
-      FROM exam_defs
-      WHERE course_id = $1
-    `,
-    [courseId]
-  );
+    // Optional: enforce retry limit
+    if (MAX_ATTEMPTS_PER_COURSE != null) {
+      const countR = await query(
+        `SELECT COUNT(*)::int AS c
+         FROM exam_attempts
+         WHERE user_id = $1 AND course_id = $2`,
+        [userId, courseId]
+      );
+      const attemptCount = countR.rows[0]?.c ?? 0;
 
-  if (!defR.rows.length) {
-    return res.status(404).json({ error: "Exam not found" });
-  }
+      if (attemptCount >= MAX_ATTEMPTS_PER_COURSE) {
+        return res.status(403).json({
+          error: "Max attempts reached",
+          attemptCount,
+          maxAttempts: MAX_ATTEMPTS_PER_COURSE,
+        });
+      }
+    }
 
-  const exam = safeJsonParse(defR.rows[0].exam_json_en, null);
-  if (!exam || !Array.isArray(exam.questions)) {
-    return res.status(500).json({ error: "Exam JSON invalid" });
-  }
+    // Load exam definition (by lang)
+    const lang = getLang(req);
 
-  const questions = exam.questions;
-  const total = questions.length;
+    const defR = await query(
+      `SELECT pass_score, exam_json_en, exam_json_ti
+       FROM exam_defs
+       WHERE course_id = $1`,
+      [courseId]
+    );
 
-  let correctCount = 0;
+    if (!defR.rows.length) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
 
-  const results = questions.map((q, i) => {
-    const picked = answers[i];
-    const correct = q.correctIndex;
-    const isCorrect = picked === correct;
-    if (isCorrect) correctCount++;
-    return { index: i, picked, correct, isCorrect };
-  });
+    const def = defR.rows[0];
+    const jsonStr = lang === "ti" ? def.exam_json_ti : def.exam_json_en;
+    const exam = safeJsonParse(jsonStr, null);
 
-  const score = total ? Math.round((correctCount / total) * 100) : 0;
-  const passScore = defR.rows[0].pass_score;
-  const passed = score >= passScore;
+    if (!exam) {
+      return res.status(500).json({ error: "Exam JSON invalid in DB", courseId, lang });
+    }
 
-  // Insert new attempt row each time
-  await query(
-    `
-      INSERT INTO exam_attempts
+    const questions = exam.questions || [];
+    const total = questions.length;
+
+    // Compute results
+    let correctCount = 0;
+
+    const results = questions.map((q, i) => {
+      const picked = answers[i];
+      const correct = q.correctIndex;
+      const isCorrect = picked === correct;
+      if (isCorrect) correctCount++;
+      return { index: i, picked, correct, isCorrect };
+    });
+
+    const score = total === 0 ? 0 : Math.round((correctCount / total) * 100);
+    const passScore = def.pass_score;
+    const passed = score >= passScore;
+
+    // ✅ Insert NEW attempt each time
+    // answers column is JSONB -> store results directly
+    await query(
+      `INSERT INTO exam_attempts
         (user_id, course_id, score, passed, answers, created_at, updated_at)
-      VALUES
-        ($1, $2, $3, $4, $5, NOW(), NOW())
-    `,
-    [userId, courseId, score, passed, results] // answers is JSONB
-  );
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW())`,
+      [userId, courseId, score, passed, JSON.stringify(results)]
+    );
 
-  res.json({
-    passed,
-    score,
-    passScore,
-    results,
-  });
+    return res.json({
+      passed,
+      score,
+      passScore,
+      results,
+    });
+  } catch (e) {
+    console.error("SUBMIT EXAM ERROR:", e);
+    return res.status(500).json({ error: e.message || "Server error" });
+  }
 });
 
 module.exports = router;
