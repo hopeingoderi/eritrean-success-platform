@@ -10,16 +10,54 @@ function getLang(req) {
 }
 
 function safeJsonParse(str, fallback = null) {
-  try { return JSON.parse(str); } catch { return fallback; }
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
 }
 
 // ✅ Configure retry policy here
-const MAX_ATTEMPTS_PER_COURSE = 3; // change to 0 or null for unlimited
+// Set to 0 / null for unlimited
+const MAX_ATTEMPTS_PER_COURSE = 3;
 
-/**
- * GET /api/exams/status/:courseId
- * ✅ returns latest attempt + attemptCount (fast for dashboard)
- */
+// -------------------------
+// GET /api/exams/:courseId
+// -------------------------
+router.get("/:courseId", requireAuth, async (req, res) => {
+  const courseId = req.params.courseId;
+  const lang = getLang(req);
+
+  const r = await query(
+    `SELECT pass_score, exam_json_en, exam_json_ti
+     FROM exam_defs
+     WHERE course_id = $1`,
+    [courseId]
+  );
+
+  if (!r.rows.length) {
+    return res.status(404).json({ error: "Exam not found", courseId });
+  }
+
+  const def = r.rows[0];
+  const jsonStr = lang === "ti" ? def.exam_json_ti : def.exam_json_en;
+  const exam = safeJsonParse(jsonStr, null);
+
+  if (!exam) {
+    return res.status(500).json({ error: "Exam JSON invalid in DB", courseId, lang });
+  }
+
+  return res.json({
+    courseId,
+    passScore: def.pass_score,
+    exam,
+  });
+});
+
+// ---------------------------------
+// GET /api/exams/status/:courseId
+// ✅ latest attempt + attemptCount
+// ---------------------------------
 router.get("/status/:courseId", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const courseId = req.params.courseId;
@@ -46,6 +84,7 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
   return res.json({
     courseId,
     attemptCount: countR.rows[0]?.c ?? 0,
+    maxAttempts: MAX_ATTEMPTS_PER_COURSE || null,
     attempted: !!row,
     passed: row?.passed ?? false,
     score: row?.score ?? null,
@@ -54,77 +93,13 @@ router.get("/status/:courseId", requireAuth, async (req, res) => {
   });
 });
 
-/**
- * GET /api/exams/:courseId
- * returns exam definition + passScore
- */
-router.get("/:courseId", requireAuth, async (req, res) => {
-  const courseId = req.params.courseId;
-  const lang = getLang(req);
-
-  const r = await query(
-    `SELECT pass_score, exam_json_en, exam_json_ti
-     FROM exam_defs
-     WHERE course_id = $1`,
-    [courseId]
-  );
-
-  if (!r.rows.length) return res.status(404).json({ error: "Exam not found", courseId });
-
-  const def = r.rows[0];
-  const jsonStr = lang === "ti" ? def.exam_json_ti : def.exam_json_en;
-  const exam = safeJsonParse(jsonStr, null);
-
-  if (!exam) {
-    return res.status(500).json({ error: "Exam JSON invalid in DB", courseId, lang });
-  }
-
-  return res.json({ courseId, passScore: def.pass_score, exam });
-});
-
-// ✅ EXAM STATUS: last attempt + attempt count
-router.get("/status/:courseId", requireAuth, async (req, res) => {
-  const userId = req.user?.id;
-  const courseId = req.params.courseId;
-
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-  // Latest attempt
-  const latestR = await query(
-    `
-    SELECT id, score, passed, created_at
-    FROM exam_attempts
-    WHERE user_id = $1 AND course_id = $2
-    ORDER BY created_at DESC, id DESC
-    LIMIT 1
-    `,
-    [userId, courseId]
-  );
-
-  // Attempt count
-  const countR = await query(
-    `
-    SELECT COUNT(*)::int AS count
-    FROM exam_attempts
-    WHERE user_id = $1 AND course_id = $2
-    `,
-    [userId, courseId]
-  );
-
-  const latest = latestR.rows[0] || null;
-
-  res.json({
-    score: latest?.score ?? null,
-    passed: latest?.passed ?? null,
-    attemptCount: countR.rows[0].count,
-    maxAttempts: null // unlimited (for now)
-  });
-});
-/**
- * POST /api/exams/:courseId/submit
- * Body: { answers: number[] }
- * ✅ stores NEW attempt each time + returns results
- */
+// ---------------------------------
+// POST /api/exams/:courseId/submit
+// Body: { answers: number[] }
+// ✅ inserts NEW attempt each time
+// ✅ returns results for per-question marking
+// ✅ enforces attempt limit (Option B)
+// ---------------------------------
 router.post("/:courseId/submit", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const courseId = req.params.courseId;
@@ -133,6 +108,26 @@ router.post("/:courseId/submit", requireAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
   if (!Array.isArray(answers)) {
     return res.status(400).json({ error: "Answers array required" });
+  }
+
+  // ✅ Attempt limit (Option B)
+  if (MAX_ATTEMPTS_PER_COURSE && MAX_ATTEMPTS_PER_COURSE > 0) {
+    const countR = await query(
+      `SELECT COUNT(*)::int AS c
+       FROM exam_attempts
+       WHERE user_id = $1 AND course_id = $2`,
+      [userId, courseId]
+    );
+
+    const attemptCount = countR.rows[0]?.c ?? 0;
+
+    if (attemptCount >= MAX_ATTEMPTS_PER_COURSE) {
+      return res.status(429).json({
+        error: "Max attempts reached",
+        attemptCount,
+        maxAttempts: MAX_ATTEMPTS_PER_COURSE,
+      });
+    }
   }
 
   // Load exam definition
@@ -147,8 +142,18 @@ router.post("/:courseId/submit", requireAuth, async (req, res) => {
     return res.status(404).json({ error: "Exam not found" });
   }
 
-  const exam = JSON.parse(defR.rows[0].exam_json_en);
-  const questions = exam.questions || [];
+  const passScore = defR.rows[0].pass_score;
+
+  const exam = safeJsonParse(defR.rows[0].exam_json_en, null);
+  if (!exam) {
+    return res.status(500).json({ error: "Exam JSON invalid in DB", courseId, lang: "en" });
+  }
+
+  const questions = Array.isArray(exam.questions) ? exam.questions : [];
+
+  if (!questions.length) {
+    return res.status(400).json({ error: "Exam not configured (no questions)" });
+  }
 
   // Compute results
   let correctCount = 0;
@@ -160,11 +165,11 @@ router.post("/:courseId/submit", requireAuth, async (req, res) => {
     return { index: i, picked, correct, isCorrect };
   });
 
+  // Score
   const score = Math.round((correctCount / questions.length) * 100);
-  const passScore = defR.rows[0].pass_score;
   const passed = score >= passScore;
 
-  // 🔑 INSERT NEW ATTEMPT (no ON CONFLICT)
+  // Insert NEW attempt (no ON CONFLICT)
   await query(
     `INSERT INTO exam_attempts
       (user_id, course_id, score, passed, answers, created_at, updated_at)
@@ -176,7 +181,7 @@ router.post("/:courseId/submit", requireAuth, async (req, res) => {
     passed,
     score,
     passScore,
-    results
+    results,
   });
 });
 
