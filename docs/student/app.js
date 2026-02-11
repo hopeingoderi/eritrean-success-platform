@@ -632,22 +632,27 @@ async function renderExam(courseId) {
   }
 
   // If backend returns latestAttempt, show it; else fallback to status endpoint
-  let latest = examData.latestAttempt || null;
+ // Load exam status (score, passed, attempts)
+  let st = null;
   try {
-    const st = await loadExamStatus(courseId);
-    if (!latest && st && (st.score != null || st.passed != null)) latest = st;
+    st = await loadExamStatus(courseId);
   } catch {}
+
 
   const passScore = examData.passScore ?? 70;
   const questions = examData.exam?.questions || [];
 
   document.getElementById("examMeta").innerHTML = `
-    Pass score: <b>${passScore}%</b>
-    ${latest && (latest.score != null)
-      ? ` • Last score: <b>${latest.score}%</b> ${latest.passed ? "✅ PASSED" : "❌"}`
-      : ""
-    }
-  `;
+  Pass score: <b>${passScore}%</b>
+  ${st?.attemptCount != null
+    ? ` • Attempts: <b>${st.attemptCount}</b>${st.maxAttempts ? ` / ${st.maxAttempts}` : ""}`
+    : ""
+  }
+  ${st?.score != null
+    ? ` • Last score: <b>${st.score}%</b> ${st.passed ? "✅ PASSED" : "❌"}`
+    : ""
+  }
+`;
 
   if (!questions.length) {
     document.getElementById("examCard").innerHTML =
