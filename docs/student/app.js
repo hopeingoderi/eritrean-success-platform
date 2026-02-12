@@ -764,8 +764,7 @@ async function renderExam(courseId) {
     btnRetry.style.display = "none";
     btnSubmit.disabled = false;
   };
-
- btnSubmit.onclick = async () => {
+btnSubmit.onclick = async () => {
     const msg = document.getElementById("examMsg");
     msg.textContent = "Submitting...";
 
@@ -829,6 +828,7 @@ async function renderExam(courseId) {
       btnSubmit.disabled = false;
     }
   };
+ 
 }
 
 // ================= CERTIFICATE =================
