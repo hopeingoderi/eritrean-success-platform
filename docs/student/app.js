@@ -765,7 +765,7 @@ async function renderExam(courseId) {
     btnSubmit.disabled = false;
   };
 
-  btnSubmit.onclick = async () => {
+ btnSubmit.onclick = async () => {
     const msg = document.getElementById("examMsg");
     msg.textContent = "Submitting...";
 
@@ -782,27 +782,52 @@ async function renderExam(courseId) {
 
     btnSubmit.disabled = true;
 
- try {
-  const r = await api(`/exams/${courseId}/submit`, {
-    method: "POST",
-    body: { answers } // (or { answers, lang: state.lang } if you want)
-  });
+    try {
+      const r = await api(`/exams/${courseId}/submit`, {
+        method: "POST",
+        body: { answers } // keep simple
+      });
 
-  msg.textContent = r.passed
-    ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
-    : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%)`;
+      msg.textContent = r.passed
+        ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
+        : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%)`;
 
-  // ✅ Use your existing function
-  if (Array.isArray(r.results)) applyResults(r.results);
+      // ✅ show per-question correction (you already have applyResults)
+      if (Array.isArray(r.results)) applyResults(r.results);
 
-  if (!r.passed) btnRetry.style.display = "inline-block";
+      // ✅ show retry if failed AND attempts still available
+      // if maxAttempts is null -> unlimited
+      const maxA = (r.maxAttempts ?? st?.maxAttempts ?? null);
+      const countA = (r.attemptCount ?? (st?.attemptCount != null ? st.attemptCount + 1 : null));
 
-  await loadExamStatus(courseId);
+      const attemptsLeft =
+        maxA == null || countA == null ? null : Math.max(0, maxA - countA);
 
-} catch (e) {
-  msg.textContent = "Submit failed: " + e.message;
-  btnSubmit.disabled = false;
-}
+      if (!r.passed && (attemptsLeft == null || attemptsLeft > 0)) {
+        btnRetry.style.display = "inline-block";
+      } else {
+        btnRetry.style.display = "none";
+      }
+
+      // ✅ refresh status and update the meta line immediately
+      st = await loadExamStatus(courseId);
+
+      document.getElementById("examMeta").innerHTML = `
+        Pass score: <b>${passScore}%</b>
+        ${st?.attemptCount != null
+          ? ` • Attempts: <b>${st.attemptCount}</b>${st.maxAttempts != null ? ` / ${st.maxAttempts}` : ""}`
+          : ""
+        }
+        ${st?.score != null
+          ? ` • Last score: <b>${st.score}%</b> ${st.passed ? "✅ PASSED" : "❌"}`
+          : ""
+        }
+      `;
+
+    } catch (e) {
+      msg.textContent = "Submit failed: " + e.message;
+      btnSubmit.disabled = false;
+    }
   };
 }
 
