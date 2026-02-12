@@ -171,7 +171,14 @@ async function loadProgressStatus() {
 
 async function loadExamStatus(courseId) {
   const r = await api(`/exams/status/${courseId}`);
-  state.examStatusByCourse[courseId] = r || { passed: false, score: null };
+
+  state.examStatusByCourse[courseId] = r || {
+    attemptCount: 0,
+    maxAttempts: null,
+    passed: false,
+    score: null
+  };
+
   return state.examStatusByCourse[courseId];
 }
 
@@ -624,6 +631,7 @@ async function renderExam(courseId) {
 
   let examData;
   try {
+    // if you have language support, use: `/exams/${courseId}?lang=${state.lang}`
     examData = await api(`/exams/${courseId}`);
   } catch (e) {
     document.getElementById("examCard").innerHTML =
@@ -631,28 +639,27 @@ async function renderExam(courseId) {
     return;
   }
 
-  // If backend returns latestAttempt, show it; else fallback to status endpoint
- // Load exam status (score, passed, attempts)
-  let st = null;
-  try {
-    st = await loadExamStatus(courseId);
-  } catch {}
-
-
   const passScore = examData.passScore ?? 70;
   const questions = examData.exam?.questions || [];
 
+  // status first (attempt count etc.)
+  let st = null;
+  try {
+    st = await api(`/exams/status/${courseId}`);
+  } catch {}
+
+  // meta line
   document.getElementById("examMeta").innerHTML = `
-  Pass score: <b>${passScore}%</b>
-  ${st?.attemptCount != null
-    ? ` • Attempts: <b>${st.attemptCount}</b>${st.maxAttempts ? ` / ${st.maxAttempts}` : ""}`
-    : ""
-  }
-  ${st?.score != null
-    ? ` • Last score: <b>${st.score}%</b> ${st.passed ? "✅ PASSED" : "❌"}`
-    : ""
-  }
-`;
+    Pass score: <b>${passScore}%</b>
+    ${st?.attemptCount != null
+      ? ` • Attempts: <b>${st.attemptCount}</b>${st.maxAttempts ? ` / ${st.maxAttempts}` : ""}`
+      : ""
+    }
+    ${st?.score != null
+      ? ` • Last score: <b>${st.score}%</b> ${st.passed ? "✅ PASSED" : "❌"}`
+      : ""
+    }
+  `;
 
   if (!questions.length) {
     document.getElementById("examCard").innerHTML =
@@ -660,7 +667,12 @@ async function renderExam(courseId) {
     return;
   }
 
-  // Build UI with ids + data attributes so we can mark results later
+  const lockedByAttempts =
+    st?.maxAttempts != null &&
+    st?.attemptCount != null &&
+    st.attemptCount >= st.maxAttempts;
+
+  // Build UI with ids so we can mark results later
   const qHtml = questions.map((q, i) => {
     const opts = (q.options || []).map((opt, oi) => `
       <label class="quizOption" id="q_${i}_opt_${oi}" data-q="${i}" data-opt="${oi}">
@@ -692,11 +704,14 @@ async function renderExam(courseId) {
 
   const btnSubmit = document.getElementById("submitExam");
   const btnRetry = document.getElementById("retryExam");
+  const msg = document.getElementById("examMsg");
 
   function clearMarks() {
     for (let i = 0; i < questions.length; i++) {
-      document.getElementById(`qcard_${i}`).style.outline = "none";
-      document.getElementById(`q_${i}_msg`).textContent = "";
+      const c = document.getElementById(`qcard_${i}`);
+      const m = document.getElementById(`q_${i}_msg`);
+      if (c) c.style.outline = "none";
+      if (m) m.textContent = "";
       for (let oi = 0; oi < (questions[i].options || []).length; oi++) {
         const el = document.getElementById(`q_${i}_opt_${oi}`);
         if (!el) continue;
@@ -707,27 +722,24 @@ async function renderExam(courseId) {
   }
 
   function applyResults(results) {
-    // results item: { index, picked, correct, isCorrect }
     clearMarks();
-
     for (const r of results || []) {
       const i = r.index;
 
-      // Mark question card
       const qCard = document.getElementById(`qcard_${i}`);
       if (qCard) {
-        qCard.style.outline = r.isCorrect ? "2px solid rgba(34,197,94,.6)" : "2px solid rgba(239,68,68,.6)";
+        qCard.style.outline = r.isCorrect
+          ? "2px solid rgba(34,197,94,.6)"
+          : "2px solid rgba(239,68,68,.6)";
         qCard.style.borderRadius = "10px";
       }
 
-      // Fade all options slightly
       const optCount = (questions[i]?.options || []).length;
       for (let oi = 0; oi < optCount; oi++) {
         const el = document.getElementById(`q_${i}_opt_${oi}`);
         if (el) el.style.opacity = "0.65";
       }
 
-      // Highlight correct option
       const correctEl = document.getElementById(`q_${i}_opt_${r.correct}`);
       if (correctEl) {
         correctEl.style.opacity = "1";
@@ -735,7 +747,6 @@ async function renderExam(courseId) {
         correctEl.style.borderRadius = "10px";
       }
 
-      // Highlight picked option
       const pickedEl = document.getElementById(`q_${i}_opt_${r.picked}`);
       if (pickedEl) {
         pickedEl.style.opacity = "1";
@@ -745,7 +756,6 @@ async function renderExam(courseId) {
         pickedEl.style.borderRadius = "10px";
       }
 
-      // Per-question message
       const msgEl = document.getElementById(`q_${i}_msg`);
       if (msgEl) {
         msgEl.textContent = r.isCorrect ? "✅ Correct" : "❌ Wrong (correct option highlighted)";
@@ -753,19 +763,38 @@ async function renderExam(courseId) {
     }
   }
 
+  function setAllInputsDisabled(disabled) {
+    for (let i = 0; i < questions.length; i++) {
+      document.querySelectorAll(`input[name="q_${i}"]`).forEach(inp => {
+        inp.disabled = disabled;
+      });
+    }
+  }
+
+  // ✅ lock immediately if max attempts reached
+  if (lockedByAttempts) {
+    msg.textContent = "Maximum attempts reached. Please contact admin to reset attempts.";
+    btnSubmit.disabled = true;
+    btnRetry.style.display = "none";
+    setAllInputsDisabled(true);
+  }
+
   btnRetry.onclick = () => {
-    // Clear selected answers
+    if (btnSubmit.disabled) return; // if locked, do nothing
+
     for (let i = 0; i < questions.length; i++) {
       const picked = document.querySelector(`input[name="q_${i}"]:checked`);
       if (picked) picked.checked = false;
     }
     clearMarks();
-    document.getElementById("examMsg").textContent = "Try again when ready.";
+    msg.textContent = "Try again when ready.";
     btnRetry.style.display = "none";
     btnSubmit.disabled = false;
   };
-btnSubmit.onclick = async () => {
-    const msg = document.getElementById("examMsg");
+
+  btnSubmit.onclick = async () => {
+    if (btnSubmit.disabled) return;
+
     msg.textContent = "Submitting...";
 
     const answers = [];
@@ -784,51 +813,61 @@ btnSubmit.onclick = async () => {
     try {
       const r = await api(`/exams/${courseId}/submit`, {
         method: "POST",
-        body: { answers } // keep simple
+        body: { answers }
       });
 
       msg.textContent = r.passed
         ? `✅ Passed! Score: ${r.score}% (Pass: ${r.passScore}%)`
         : `❌ Not passed. Score: ${r.score}% (Pass: ${r.passScore}%)`;
 
-      // ✅ show per-question correction (you already have applyResults)
       if (Array.isArray(r.results)) applyResults(r.results);
 
-      // ✅ show retry if failed AND attempts still available
-      // if maxAttempts is null -> unlimited
-      const maxA = (r.maxAttempts ?? st?.maxAttempts ?? null);
-      const countA = (r.attemptCount ?? (st?.attemptCount != null ? st.attemptCount + 1 : null));
+      // show retry only if not passed AND not locked
+      btnRetry.style.display = (!r.passed ? "inline-block" : "none");
 
-      const attemptsLeft =
-        maxA == null || countA == null ? null : Math.max(0, maxA - countA);
-
-      if (!r.passed && (attemptsLeft == null || attemptsLeft > 0)) {
-        btnRetry.style.display = "inline-block";
-      } else {
-        btnRetry.style.display = "none";
-      }
-
-      // ✅ refresh status and update the meta line immediately
-      st = await loadExamStatus(courseId);
-
+      // refresh attempts/meta
+      const st2 = await api(`/exams/status/${courseId}`);
       document.getElementById("examMeta").innerHTML = `
         Pass score: <b>${passScore}%</b>
-        ${st?.attemptCount != null
-          ? ` • Attempts: <b>${st.attemptCount}</b>${st.maxAttempts != null ? ` / ${st.maxAttempts}` : ""}`
-          : ""
-        }
-        ${st?.score != null
-          ? ` • Last score: <b>${st.score}%</b> ${st.passed ? "✅ PASSED" : "❌"}`
-          : ""
-        }
+        • Attempts: <b>${st2.attemptCount}</b>${st2.maxAttempts ? ` / ${st2.maxAttempts}` : ""}
+        ${st2.score != null ? ` • Last score: <b>${st2.score}%</b> ${st2.passed ? "✅ PASSED" : "❌"}` : ""}
       `;
 
+      // ✅ if they just hit the limit, lock now
+      if (st2.maxAttempts != null && st2.attemptCount >= st2.maxAttempts) {
+        msg.textContent = "Maximum attempts reached. Please contact admin to reset attempts.";
+        btnSubmit.disabled = true;
+        btnRetry.style.display = "none";
+        setAllInputsDisabled(true);
+      } else {
+        // allow retry if failed and attempts still available
+        if (!r.passed) btnSubmit.disabled = false;
+      }
+
     } catch (e) {
+      // If backend says attempts reached (403), lock the exam immediately
+      const errMsg = String(e.message || "");
+      if (errMsg.toLowerCase().includes("maximum attempts")) {
+        msg.textContent = "Maximum attempts reached. Please contact admin to reset attempts.";
+        btnSubmit.disabled = true;
+        btnRetry.style.display = "none";
+        setAllInputsDisabled(true);
+
+        try {
+          const st2 = await api(`/exams/status/${courseId}`);
+          document.getElementById("examMeta").innerHTML = `
+            Pass score: <b>${passScore}%</b>
+            • Attempts: <b>${st2.attemptCount}</b>${st2.maxAttempts ? ` / ${st2.maxAttempts}` : ""}
+            ${st2.score != null ? ` • Last score: <b>${st2.score}%</b> ${st2.passed ? "✅ PASSED" : "❌"}` : ""}
+          `;
+        } catch {}
+        return;
+      }
+
       msg.textContent = "Submit failed: " + e.message;
       btnSubmit.disabled = false;
     }
   };
- 
 }
 
 // ================= CERTIFICATE =================
